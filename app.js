@@ -617,10 +617,45 @@ document.getElementById('install-dismiss').addEventListener('click', () => {
   localStorage.setItem('flashcards.installDismissed', '1');
 });
 
+/* ---------- Theme (mode + accent) ---------- */
+const THEME_KEY = 'flashcards.theme';
+const ACCENT_KEY = 'flashcards.accent';
+
+function getTheme() { return localStorage.getItem(THEME_KEY) || 'system'; }
+function getAccent() { return localStorage.getItem(ACCENT_KEY) || 'indigo'; }
+
+function applyTheme() {
+  const mode = getTheme();
+  const accent = getAccent();
+  document.documentElement.setAttribute('data-theme', mode);
+  document.documentElement.setAttribute('data-accent', accent);
+  document.querySelectorAll('#theme-mode .seg').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('#accent-swatches .swatch').forEach(b =>
+    b.classList.toggle('active', b.dataset.accent === accent));
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    const dark = mode === 'dark' ||
+      (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    meta.setAttribute('content', dark ? '#0f172a' : '#f8fafc');
+  }
+}
+
+document.querySelectorAll('#theme-mode .seg').forEach(b =>
+  b.addEventListener('click', () => { localStorage.setItem(THEME_KEY, b.dataset.mode); applyTheme(); }));
+document.querySelectorAll('#accent-swatches .swatch').forEach(b =>
+  b.addEventListener('click', () => { localStorage.setItem(ACCENT_KEY, b.dataset.accent); applyTheme(); }));
+
+// React to OS light/dark changes while on "System".
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (getTheme() === 'system') applyTheme();
+});
+
 /* ---------- Boot ---------- */
 load();
 ensureSamples();
 save();
+applyTheme();
 renderDeckOptions();
 updateCount();
 showView('home');

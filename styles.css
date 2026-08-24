@@ -10,6 +10,45 @@
   --radius: 16px;
 }
 
+/* ---- Theme modes ---- */
+/* Dark palette (default, and applied when [data-theme="dark"]). */
+:root,
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #334155;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+}
+/* Light palette. */
+[data-theme="light"] {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+}
+/* System: follow the device when no explicit choice is stored. */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-2: #e2e8f0;
+    --text: #0f172a;
+    --muted: #64748b;
+  }
+}
+
+/* ---- Accent colors (work in both light and dark) ---- */
+[data-accent="indigo"] { --primary: #4f46e5; --primary-2: #6366f1; }
+[data-accent="blue"]   { --primary: #2563eb; --primary-2: #3b82f6; }
+[data-accent="teal"]   { --primary: #0d9488; --primary-2: #14b8a6; }
+[data-accent="green"]  { --primary: #16a34a; --primary-2: #22c55e; }
+[data-accent="purple"] { --primary: #7c3aed; --primary-2: #8b5cf6; }
+[data-accent="rose"]   { --primary: #e11d48; --primary-2: #f43f5e; }
+[data-accent="orange"] { --primary: #ea580c; --primary-2: #f97316; }
+[data-accent="cranberry"] { --primary: #a4133c; --primary-2: #c9184a; }
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html, body {
@@ -133,6 +172,71 @@ main {
   padding: 2px 5px;
   border-radius: 5px;
   color: var(--text);
+}
+
+/* Appearance settings */
+.appearance {
+  margin-top: 30px;
+  text-align: left;
+  border-top: 1px solid var(--surface-2);
+  padding-top: 18px;
+}
+.appearance h3 { margin: 0 0 14px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.setting-label { font-size: 16px; font-weight: 600; }
+
+.segmented {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+.seg {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.seg.active { background: var(--primary); color: #fff; }
+
+.swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+.swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--sw);
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+}
+.swatch.active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--sw);
+}
+.swatch.active::after {
+  content: "✓";
+  color: #fff;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 /* Study deck picker */
@@ -290,6 +394,7 @@ main {
 .card-back {
   background: linear-gradient(160deg, var(--primary), var(--primary-2));
   transform: rotateY(180deg);
+  color: #fff;
 }
 
 .card-label {

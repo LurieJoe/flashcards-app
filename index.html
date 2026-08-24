@@ -16,6 +16,20 @@
   <link rel="icon" href="icons/icon-192.png" />
 
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Apply saved theme/accent before first paint to avoid a flash.
+    (function () {
+      try {
+        var t = localStorage.getItem('flashcards.theme') || 'system';
+        var a = localStorage.getItem('flashcards.accent') || 'indigo';
+        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.setAttribute('data-accent', a);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'system');
+        document.documentElement.setAttribute('data-accent', 'indigo');
+      }
+    })();
+  </script>
 </head>
 <body>
   <header class="app-header">
@@ -42,6 +56,31 @@
         <p class="home-tip">Tip: on the <strong>Import</strong> tab you can load a
            <code>.docx</code>, <code>.csv</code>, or <code>.json</code> file, or just
            type <code>question | answer</code> lines.</p>
+
+        <section class="appearance">
+          <h3>Appearance</h3>
+          <div class="setting">
+            <span class="setting-label">Theme</span>
+            <div id="theme-mode" class="segmented" role="group" aria-label="Theme mode">
+              <button type="button" class="seg" data-mode="system">System</button>
+              <button type="button" class="seg" data-mode="light">Light</button>
+              <button type="button" class="seg" data-mode="dark">Dark</button>
+            </div>
+          </div>
+          <div class="setting">
+            <span class="setting-label">Accent color</span>
+            <div id="accent-swatches" class="swatches" role="group" aria-label="Accent color">
+              <button type="button" class="swatch" data-accent="indigo" style="--sw:#4f46e5" title="Indigo" aria-label="Indigo"></button>
+              <button type="button" class="swatch" data-accent="blue" style="--sw:#2563eb" title="Blue" aria-label="Blue"></button>
+              <button type="button" class="swatch" data-accent="teal" style="--sw:#0d9488" title="Teal" aria-label="Teal"></button>
+              <button type="button" class="swatch" data-accent="green" style="--sw:#16a34a" title="Green" aria-label="Green"></button>
+              <button type="button" class="swatch" data-accent="purple" style="--sw:#7c3aed" title="Purple" aria-label="Purple"></button>
+              <button type="button" class="swatch" data-accent="rose" style="--sw:#e11d48" title="Rose" aria-label="Rose"></button>
+              <button type="button" class="swatch" data-accent="orange" style="--sw:#ea580c" title="Orange" aria-label="Orange"></button>
+              <button type="button" class="swatch" data-accent="cranberry" style="--sw:#a4133c" title="Cranberry" aria-label="Cranberry"></button>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
 
