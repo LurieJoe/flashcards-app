@@ -56,9 +56,16 @@
           <p>You don't have any cards yet.</p>
           <button class="btn primary" data-goto="edit">Import or create a deck</button>
         </div>
-        <div id="picker-controls" class="controls">
-          <button id="select-all-btn" class="btn">Select all</button>
-          <button id="start-study-btn" class="btn primary">Study</button>
+        <div id="picker-controls" class="controls-stack">
+          <label id="only-flagged-row" class="toggle-row">
+            <input type="checkbox" id="only-flagged" />
+            <span>Only study flagged cards</span>
+            <span id="flagged-total" class="deck-item-count"></span>
+          </label>
+          <div class="controls">
+            <button id="select-all-btn" class="btn">Select all</button>
+            <button id="start-study-btn" class="btn primary">Study</button>
+          </div>
         </div>
       </div>
 
@@ -86,6 +93,11 @@
           </div>
         </div>
         <p class="hint">Tap the card to flip</p>
+
+        <label class="flag-row">
+          <input type="checkbox" id="flag-check" />
+          <span>Flag this card for review</span>
+        </label>
 
         <div class="controls">
           <button id="prev-btn" class="btn">&#8592; Prev</button>

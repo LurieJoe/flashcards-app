@@ -362,6 +362,7 @@ function renderDeckList() {
   deckListEl.innerHTML = '';
   const preselect = studyDeckIds.length ? studyDeckIds : [state.activeId];
   for (const d of state.decks) {
+    const flagged = d.cards.filter(c => c.flagged).length;
     const li = document.createElement('li');
     const label = document.createElement('label');
     label.className = 'deck-item' + (d.cards.length === 0 ? ' disabled' : '');
@@ -382,10 +383,27 @@ function renderDeckList() {
 
     label.appendChild(cb);
     label.appendChild(text);
+    if (flagged > 0) {
+      const flag = document.createElement('span');
+      flag.className = 'deck-item-flag';
+      flag.textContent = `⚑ ${flagged}`;
+      label.appendChild(flag);
+    }
     label.appendChild(count);
     li.appendChild(label);
     deckListEl.appendChild(li);
   }
+  updateFlaggedTotal();
+}
+
+function updateFlaggedTotal() {
+  const total = state.decks.reduce((n, d) => n + d.cards.filter(c => c.flagged).length, 0);
+  const badge = document.getElementById('flagged-total');
+  badge.textContent = total ? `${total}` : '';
+  const row = document.getElementById('only-flagged-row');
+  const box = document.getElementById('only-flagged');
+  if (total === 0) { box.checked = false; row.classList.add('disabled'); box.disabled = true; }
+  else { row.classList.remove('disabled'); box.disabled = false; }
 }
 
 document.getElementById('select-all-btn').addEventListener('click', () => {
@@ -396,21 +414,31 @@ document.getElementById('select-all-btn').addEventListener('click', () => {
 
 document.getElementById('start-study-btn').addEventListener('click', () => {
   const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
-  if (ids.length === 0) { setStatus('', true); alert('Select at least one deck to study.'); return; }
-  startStudy(ids);
+  if (ids.length === 0) { alert('Select at least one deck to study.'); return; }
+  const onlyFlagged = document.getElementById('only-flagged').checked;
+  startStudy(ids, onlyFlagged);
 });
 
 document.getElementById('back-to-decks').addEventListener('click', openDeckPicker);
 
-function startStudy(ids) {
+function startStudy(ids, onlyFlagged) {
   studyDeckIds = ids;
   const selected = state.decks.filter(d => ids.includes(d.id));
-  studyCards = selected.flatMap(d => d.cards);
-  if (studyCards.length === 0) { alert('The selected deck(s) have no cards.'); return; }
+  let cards = selected.flatMap(d => d.cards);
+  if (onlyFlagged) cards = cards.filter(c => c.flagged);
+  studyCards = cards;
 
+  if (studyCards.length === 0) {
+    alert(onlyFlagged
+      ? 'No flagged cards in the selected deck(s). Flag some cards while studying first.'
+      : 'The selected deck(s) have no cards.');
+    return;
+  }
+
+  const scope = onlyFlagged ? 'flagged · ' : '';
   const label = selected.length === 1
-    ? selected[0].name
-    : `${selected.length} decks · ${studyCards.length} cards`;
+    ? `${selected[0].name} · ${scope}${studyCards.length} cards`
+    : `${selected.length} decks · ${scope}${studyCards.length} cards`;
   document.getElementById('study-deck-label').textContent = label;
 
   buildOrder(false);
@@ -425,6 +453,7 @@ const questionEl = document.getElementById('card-question');
 const answerEl = document.getElementById('card-answer');
 const progressText = document.getElementById('progress-text');
 const progressFill = document.getElementById('progress-fill');
+const flagCheck = document.getElementById('flag-check');
 
 function buildOrder(shuffle) {
   order = studyCards.map((_, i) => i);
@@ -444,9 +473,16 @@ function showCard() {
   cardEl.classList.remove('flipped');
   questionEl.textContent = card.q;
   answerEl.textContent = card.a;
+  flagCheck.checked = !!card.flagged;
   progressText.textContent = `${pos + 1} / ${order.length}`;
   progressFill.style.width = `${((pos + 1) / order.length) * 100}%`;
 }
+
+flagCheck.addEventListener('change', () => {
+  if (studyCards.length === 0) return;
+  studyCards[order[pos]].flagged = flagCheck.checked;
+  save();
+});
 
 function flip() { cardEl.classList.toggle('flipped'); }
 function next() { pos = (pos + 1) % order.length; showCard(); }
