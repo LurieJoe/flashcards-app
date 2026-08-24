@@ -10,6 +10,31 @@
 ============================================================ */
 const STORE_KEY = 'flashcards.data.v2';
 const LEGACY_KEY = 'flashcards.cards.v1';
+const SAMPLES_FLAG = 'flashcards.samplesSeeded';
+
+// Built-in sample decks, seeded once so new (and existing) users have something to try.
+const SAMPLE_DECKS = [
+  {
+    name: 'SAMPLE-Capitals',
+    cards: [
+      { q: 'What is the capital of France?', a: 'Paris' },
+      { q: 'What is the capital of Japan?', a: 'Tokyo' },
+      { q: 'What is the capital of Canada?', a: 'Ottawa' },
+      { q: 'What is the capital of Australia?', a: 'Canberra' },
+      { q: 'What is the capital of Brazil?', a: 'Brasília' },
+    ],
+  },
+  {
+    name: 'SAMPLE-Math',
+    cards: [
+      { q: 'What is 7 × 8?', a: '56' },
+      { q: 'What is 12 + 15?', a: '27' },
+      { q: 'What is 81 ÷ 9?', a: '9' },
+      { q: 'What is 15 − 6?', a: '9' },
+      { q: 'What is the square root of 144?', a: '12' },
+    ],
+  },
+];
 
 let state = { decks: [], activeId: null };
 let studyDeckIds = [];   // decks chosen in the picker (multi-select)
@@ -45,6 +70,18 @@ function load() {
 
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 function activeDeck() { return state.decks.find(d => d.id === state.activeId) || state.decks[0]; }
+
+// Seed the built-in sample decks a single time (skips any that already exist by name).
+function ensureSamples() {
+  if (localStorage.getItem(SAMPLES_FLAG) === '1') return;
+  const existing = new Set(state.decks.map(d => d.name.toLowerCase()));
+  for (const s of SAMPLE_DECKS) {
+    if (!existing.has(s.name.toLowerCase())) {
+      state.decks.push({ id: uid(), name: s.name, cards: s.cards.map(c => ({ q: c.q, a: c.a })) });
+    }
+  }
+  localStorage.setItem(SAMPLES_FLAG, '1');
+}
 
 function uniqueName(base) {
   let name = base, n = 2;
@@ -582,6 +619,7 @@ document.getElementById('install-dismiss').addEventListener('click', () => {
 
 /* ---------- Boot ---------- */
 load();
+ensureSamples();
 save();
 renderDeckOptions();
 updateCount();

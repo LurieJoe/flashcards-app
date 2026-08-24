@@ -1,0 +1,10 @@
+{
+  "name": "SAMPLE-Capitals",
+  "cards": [
+    { "q": "What is the capital of France?", "a": "Paris" },
+    { "q": "What is the capital of Japan?", "a": "Tokyo" },
+    { "q": "What is the capital of Canada?", "a": "Ottawa" },
+    { "q": "What is the capital of Australia?", "a": "Canberra" },
+    { "q": "What is the capital of Brazil?", "a": "Brasília" }
+  ]
+}

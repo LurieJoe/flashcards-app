@@ -1,0 +1,10 @@
+{
+  "name": "SAMPLE-Math",
+  "cards": [
+    { "q": "What is 7 × 8?", "a": "56" },
+    { "q": "What is 12 + 15?", "a": "27" },
+    { "q": "What is 81 ÷ 9?", "a": "9" },
+    { "q": "What is 15 − 6?", "a": "9" },
+    { "q": "What is the square root of 144?", "a": "12" }
+  ]
+}
