@@ -20,29 +20,54 @@
 <body>
   <header class="app-header">
     <h1>Flashcards</h1>
-
-    <div class="deck-bar">
-      <select id="deck-select" aria-label="Select deck"></select>
-      <button id="new-deck-btn" class="icon-btn" title="New deck" aria-label="New deck">+</button>
-      <button id="rename-deck-btn" class="icon-btn" title="Rename deck" aria-label="Rename deck">&#9998;</button>
-      <button id="delete-deck-btn" class="icon-btn" title="Delete deck" aria-label="Delete deck">&#128465;</button>
-    </div>
-
     <nav class="tabs">
-      <button class="tab active" data-view="study">Study</button>
-      <button class="tab" data-view="edit">Edit</button>
+      <button class="tab active" data-view="home">Home</button>
+      <button class="tab" data-view="study">Study</button>
+      <button class="tab" data-view="edit">Import</button>
     </nav>
   </header>
 
   <main>
+    <!-- HOME VIEW -->
+    <section id="home-view" class="view active">
+      <div class="welcome">
+        <div class="welcome-icon">🗂️</div>
+        <h2>Welcome to Flashcards</h2>
+        <p>Create your own study material, or import a list of questions and
+           answers. Organize cards into decks and study them anytime — even offline.</p>
+        <div class="home-actions">
+          <button class="btn primary" data-goto="study">Study a deck</button>
+          <button class="btn" data-goto="edit">Import or create</button>
+        </div>
+        <p class="home-tip">Tip: on the <strong>Import</strong> tab you can load a
+           <code>.docx</code>, <code>.csv</code>, or <code>.json</code> file, or just
+           type <code>question | answer</code> lines.</p>
+      </div>
+    </section>
+
     <!-- STUDY VIEW -->
-    <section id="study-view" class="view active">
-      <div id="empty-state" class="empty">
-        <p>This deck has no cards yet.</p>
-        <button class="btn primary" data-goto="edit">Add or import cards</button>
+    <section id="study-view" class="view">
+      <!-- Deck picker -->
+      <div id="deck-picker">
+        <h2>Choose deck(s) to study</h2>
+        <p class="help">Select one or more decks. Multiple decks are studied together.</p>
+        <ul id="deck-list" class="deck-list"></ul>
+        <div id="picker-empty" class="empty hidden">
+          <p>You don't have any cards yet.</p>
+          <button class="btn primary" data-goto="edit">Import or create a deck</button>
+        </div>
+        <div id="picker-controls" class="controls">
+          <button id="select-all-btn" class="btn">Select all</button>
+          <button id="start-study-btn" class="btn primary">Study</button>
+        </div>
       </div>
 
+      <!-- Study area -->
       <div id="study-area" class="hidden">
+        <div class="study-top">
+          <button id="back-to-decks" class="btn small">&#8249; Decks</button>
+          <span id="study-deck-label" class="study-deck-label"></span>
+        </div>
         <div class="progress">
           <span id="progress-text">1 / 1</span>
           <div class="progress-bar"><div id="progress-fill"></div></div>
@@ -70,8 +95,15 @@
       </div>
     </section>
 
-    <!-- EDIT VIEW -->
+    <!-- IMPORT / CREATE VIEW -->
     <section id="edit-view" class="view">
+      <div class="deck-bar">
+        <select id="deck-select" aria-label="Select deck to edit"></select>
+        <button id="new-deck-btn" class="icon-btn" title="New deck" aria-label="New deck">+</button>
+        <button id="rename-deck-btn" class="icon-btn" title="Rename deck" aria-label="Rename deck">&#9998;</button>
+        <button id="delete-deck-btn" class="icon-btn" title="Delete deck" aria-label="Delete deck">&#128465;</button>
+      </div>
+
       <div class="import-row">
         <label class="btn" for="file-input">Import file&hellip;</label>
         <input id="file-input" type="file" accept=".docx,.json,.txt,.csv" hidden />

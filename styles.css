@@ -108,10 +108,83 @@ main {
 .view.active { display: block; }
 .hidden { display: none !important; }
 
+/* Home */
+.welcome {
+  text-align: center;
+  padding: 24px 8px;
+}
+.welcome-icon { font-size: 56px; line-height: 1; margin-bottom: 8px; }
+.welcome h2 { margin: 8px 0; font-size: 24px; }
+.welcome p { color: var(--muted); font-size: 16px; line-height: 1.5; }
+.home-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 22px auto 0;
+  max-width: 320px;
+}
+.home-actions .btn { padding: 15px; font-size: 16px; }
+.home-tip {
+  margin-top: 26px;
+  font-size: 13px;
+}
+.home-tip code {
+  background: var(--surface);
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: var(--text);
+}
+
+/* Study deck picker */
+#deck-picker h2 { font-size: 20px; margin: 4px 0 6px; }
+.deck-list {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.deck-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.deck-item.disabled { opacity: 0.5; cursor: default; }
+.deck-item input[type=checkbox] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primary);
+  flex: 0 0 auto;
+}
+.deck-item-name { flex: 1; font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
+.deck-item-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--surface-2);
+  border-radius: 20px;
+  padding: 2px 10px;
+}
+
+.study-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.study-deck-label { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.btn.small { flex: 0 0 auto; padding: 8px 12px; font-size: 14px; }
+
 /* Study */
 .empty {
   text-align: center;
-  margin-top: 20vh;
+  margin-top: 12vh;
   color: var(--muted);
 }
 

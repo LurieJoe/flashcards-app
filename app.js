@@ -12,6 +12,8 @@ const STORE_KEY = 'flashcards.data.v2';
 const LEGACY_KEY = 'flashcards.cards.v1';
 
 let state = { decks: [], activeId: null };
+let studyDeckIds = [];   // decks chosen in the picker (multi-select)
+let studyCards = [];     // flattened cards for the current study session
 let order = [];
 let pos = 0;
 
@@ -24,7 +26,6 @@ function load() {
     if (raw) {
       state = JSON.parse(raw);
     } else {
-      // migrate legacy single deck if present
       const legacy = localStorage.getItem(LEGACY_KEY);
       const cards = legacy ? JSON.parse(legacy) : [];
       state = { decks: [{ id: uid(), name: 'My cards', cards: Array.isArray(cards) ? cards : [] }], activeId: null };
@@ -43,7 +44,6 @@ function load() {
 }
 
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-
 function activeDeck() { return state.decks.find(d => d.id === state.activeId) || state.decks[0]; }
 
 function uniqueName(base) {
@@ -56,7 +56,6 @@ function uniqueName(base) {
 /* ============================================================
    Text / CSV parsing
 ============================================================ */
-// Accepts "q | a", "q - a", "q<TAB>a", or "q,a" (CSV-ish). Blank lines ignored.
 function parseInput(text) {
   const result = [];
   for (const raw of text.split(/\r?\n/)) {
@@ -82,7 +81,6 @@ function splitPair(line) {
   return q && a ? { q, a } : null;
 }
 
-// Minimal CSV: two columns, supports quoted fields with commas.
 function splitCsv(line) {
   const m = line.match(/^\s*(?:"((?:[^"]|"")*)"|([^,]*))\s*,\s*(?:"((?:[^"]|"")*)"|(.*))\s*$/);
   if (!m) return null;
@@ -100,7 +98,6 @@ function isHeaderPair(p) {
 
 function cardsToText(cards) { return cards.map(c => `${c.q} | ${c.a}`).join('\n'); }
 
-/* ---------- Layout auto-detection for plain lines ---------- */
 function cardsFromLines(lines) {
   lines = lines.filter(l => l && l.trim()).map(l => l.trim());
   if (lines.length === 0) return { cards: [], method: 'empty' };
@@ -118,7 +115,6 @@ function cardsFromLines(lines) {
     return { cards, method: 'separator' };
   }
 
-  // Fallback: alternating question / answer lines
   const cards = [];
   for (let i = 0; i + 1 < lines.length; i += 2) cards.push({ q: lines[i], a: lines[i + 1] });
   return { cards, method: 'alternating lines' };
@@ -141,9 +137,7 @@ function parseLabeled(lines, labelQ, labelA) {
 }
 
 /* ============================================================
-   .docx importer (fully offline, no libraries)
-   A .docx is a ZIP; we read word/document.xml and inflate it
-   with the browser's built-in DecompressionStream.
+   .docx importer (offline, no libraries)
 ============================================================ */
 async function importDocx(file) {
   const buf = new Uint8Array(await file.arrayBuffer());
@@ -155,7 +149,6 @@ async function importDocx(file) {
 
 async function extractDocumentXml(buf) {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  // locate End Of Central Directory
   let eocd = -1;
   for (let i = buf.length - 22; i >= 0; i--) {
     if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
@@ -251,7 +244,6 @@ async function importFile(file) {
   if (name.endsWith('.docx')) return importDocx(file);
   if (name.endsWith('.json')) {
     const data = JSON.parse(await file.text());
-    // Accept {name, cards:[{q,a}]} or [{q,a}] or [[q,a],...]
     let cards = [];
     const arr = Array.isArray(data) ? data : data.cards;
     if (Array.isArray(arr)) {
@@ -261,7 +253,6 @@ async function importFile(file) {
     }
     return { cards, method: 'json', suggestedName: data.name };
   }
-  // .txt / .csv / anything else: treat as text
   const text = await file.text();
   const parsed = parseInput(text);
   if (parsed.length) return { cards: parsed.filter(p => !isHeaderPair(p)), method: 'text' };
@@ -271,9 +262,13 @@ async function importFile(file) {
 function baseName(fileName) { return fileName.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim(); }
 
 /* ============================================================
-   Views + deck UI
+   Views
 ============================================================ */
-const views = { study: document.getElementById('study-view'), edit: document.getElementById('edit-view') };
+const views = {
+  home: document.getElementById('home-view'),
+  study: document.getElementById('study-view'),
+  edit: document.getElementById('edit-view'),
+};
 const tabs = document.querySelectorAll('.tab');
 const deckSelect = document.getElementById('deck-select');
 const status = document.getElementById('edit-status');
@@ -284,6 +279,17 @@ function setStatus(msg, ok = true) {
   if (msg) setTimeout(() => { if (status.textContent === msg) status.textContent = ''; }, 4000);
 }
 
+function showView(name) {
+  Object.entries(views).forEach(([k, el]) => el.classList.toggle('active', k === name));
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.view === name));
+  if (name === 'study') openDeckPicker();
+  if (name === 'edit') { renderDeckOptions(); document.getElementById('bulk-input').value = cardsToText(activeDeck().cards); updateCount(); }
+}
+
+tabs.forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
+document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => showView(b.dataset.goto)));
+
+/* ---------- Import/Create: deck management ---------- */
 function renderDeckOptions() {
   deckSelect.innerHTML = '';
   for (const d of state.decks) {
@@ -295,22 +301,11 @@ function renderDeckOptions() {
   }
 }
 
-function showView(name) {
-  Object.entries(views).forEach(([k, el]) => el.classList.toggle('active', k === name));
-  tabs.forEach(t => t.classList.toggle('active', t.dataset.view === name));
-  if (name === 'study') renderStudy();
-  if (name === 'edit') document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
-}
-
-tabs.forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
-document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => showView(b.dataset.goto)));
-
 deckSelect.addEventListener('change', () => {
   state.activeId = deckSelect.value;
   save();
-  order = [];
+  document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
   updateCount();
-  showView(views.edit.classList.contains('active') ? 'edit' : 'study');
 });
 
 document.getElementById('new-deck-btn').addEventListener('click', () => {
@@ -321,9 +316,8 @@ document.getElementById('new-deck-btn').addEventListener('click', () => {
   state.activeId = d.id;
   save();
   renderDeckOptions();
-  order = [];
+  document.getElementById('bulk-input').value = '';
   updateCount();
-  showView('edit');
 });
 
 document.getElementById('rename-deck-btn').addEventListener('click', () => {
@@ -339,16 +333,93 @@ document.getElementById('delete-deck-btn').addEventListener('click', () => {
   const d = activeDeck();
   if (!confirm(`Delete deck "${d.name}" and its ${d.cards.length} cards?`)) return;
   state.decks = state.decks.filter(x => x.id !== d.id);
+  studyDeckIds = studyDeckIds.filter(id => id !== d.id);
   if (state.decks.length === 0) state.decks.push({ id: uid(), name: 'My cards', cards: [] });
   state.activeId = state.decks[0].id;
   save();
   renderDeckOptions();
-  order = [];
+  document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
   updateCount();
-  showView('study');
 });
 
-/* ---------- Study ---------- */
+/* ---------- Study: deck picker (multi-select) ---------- */
+const deckPicker = document.getElementById('deck-picker');
+const deckListEl = document.getElementById('deck-list');
+const studyArea = document.getElementById('study-area');
+
+function openDeckPicker() {
+  studyArea.classList.add('hidden');
+  deckPicker.classList.remove('hidden');
+  renderDeckList();
+}
+
+function renderDeckList() {
+  const anyCards = state.decks.some(d => d.cards.length > 0);
+  document.getElementById('picker-empty').classList.toggle('hidden', anyCards);
+  document.getElementById('picker-controls').classList.toggle('hidden', !anyCards);
+  deckListEl.classList.toggle('hidden', !anyCards);
+
+  deckListEl.innerHTML = '';
+  const preselect = studyDeckIds.length ? studyDeckIds : [state.activeId];
+  for (const d of state.decks) {
+    const li = document.createElement('li');
+    const label = document.createElement('label');
+    label.className = 'deck-item' + (d.cards.length === 0 ? ' disabled' : '');
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = d.id;
+    cb.checked = d.cards.length > 0 && preselect.includes(d.id);
+    cb.disabled = d.cards.length === 0;
+
+    const text = document.createElement('span');
+    text.className = 'deck-item-name';
+    text.textContent = d.name;
+
+    const count = document.createElement('span');
+    count.className = 'deck-item-count';
+    count.textContent = d.cards.length === 0 ? 'empty' : `${d.cards.length}`;
+
+    label.appendChild(cb);
+    label.appendChild(text);
+    label.appendChild(count);
+    li.appendChild(label);
+    deckListEl.appendChild(li);
+  }
+}
+
+document.getElementById('select-all-btn').addEventListener('click', () => {
+  const boxes = deckListEl.querySelectorAll('input[type=checkbox]:not(:disabled)');
+  const allChecked = [...boxes].every(b => b.checked);
+  boxes.forEach(b => { b.checked = !allChecked; });
+});
+
+document.getElementById('start-study-btn').addEventListener('click', () => {
+  const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
+  if (ids.length === 0) { setStatus('', true); alert('Select at least one deck to study.'); return; }
+  startStudy(ids);
+});
+
+document.getElementById('back-to-decks').addEventListener('click', openDeckPicker);
+
+function startStudy(ids) {
+  studyDeckIds = ids;
+  const selected = state.decks.filter(d => ids.includes(d.id));
+  studyCards = selected.flatMap(d => d.cards);
+  if (studyCards.length === 0) { alert('The selected deck(s) have no cards.'); return; }
+
+  const label = selected.length === 1
+    ? selected[0].name
+    : `${selected.length} decks · ${studyCards.length} cards`;
+  document.getElementById('study-deck-label').textContent = label;
+
+  buildOrder(false);
+  deckPicker.classList.add('hidden');
+  studyArea.classList.remove('hidden');
+  showCard();
+}
+
+/* ---------- Study: card engine ---------- */
 const cardEl = document.getElementById('card');
 const questionEl = document.getElementById('card-question');
 const answerEl = document.getElementById('card-answer');
@@ -356,8 +427,7 @@ const progressText = document.getElementById('progress-text');
 const progressFill = document.getElementById('progress-fill');
 
 function buildOrder(shuffle) {
-  const cards = activeDeck().cards;
-  order = cards.map((_, i) => i);
+  order = studyCards.map((_, i) => i);
   if (shuffle) {
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -367,20 +437,10 @@ function buildOrder(shuffle) {
   pos = 0;
 }
 
-function renderStudy() {
-  const cards = activeDeck().cards;
-  const hasCards = cards.length > 0;
-  document.getElementById('empty-state').classList.toggle('hidden', hasCards);
-  document.getElementById('study-area').classList.toggle('hidden', !hasCards);
-  if (!hasCards) return;
-  if (order.length !== cards.length) buildOrder(false);
-  if (pos >= order.length) pos = 0;
-  showCard();
-}
-
 function showCard() {
-  const cards = activeDeck().cards;
-  const card = cards[order[pos]];
+  if (studyCards.length === 0) return;
+  if (pos >= order.length) pos = 0;
+  const card = studyCards[order[pos]];
   cardEl.classList.remove('flipped');
   questionEl.textContent = card.q;
   answerEl.textContent = card.a;
@@ -407,19 +467,19 @@ cardEl.addEventListener('touchend', e => {
   touchStartX = null;
 });
 document.addEventListener('keydown', e => {
-  if (!views.study.classList.contains('active')) return;
+  if (!views.study.classList.contains('active') || studyArea.classList.contains('hidden')) return;
   if (e.key === 'ArrowRight') next();
   if (e.key === 'ArrowLeft') prev();
 });
 
-/* ---------- Edit ---------- */
-function updateCount() { document.getElementById('card-count').textContent = activeDeck().cards.length; renderDeckOptions(); }
+/* ---------- Import/Create: editing ---------- */
+function updateCount() { document.getElementById('card-count').textContent = activeDeck().cards.length; }
 
 document.getElementById('save-btn').addEventListener('click', () => {
   const parsed = parseInput(document.getElementById('bulk-input').value).filter(p => !isHeaderPair(p));
   activeDeck().cards = parsed;
   save();
-  buildOrder(false);
+  renderDeckOptions();
   updateCount();
   setStatus(`Saved ${parsed.length} card${parsed.length === 1 ? '' : 's'}.`);
 });
@@ -428,7 +488,7 @@ document.getElementById('clear-btn').addEventListener('click', () => {
   if (!confirm('Clear all cards in this deck?')) return;
   activeDeck().cards = [];
   save();
-  buildOrder(false);
+  renderDeckOptions();
   updateCount();
   document.getElementById('bulk-input').value = '';
   setStatus('Deck cleared.', false);
@@ -453,20 +513,18 @@ fileInput.addEventListener('change', async () => {
   try {
     const { cards, method, suggestedName } = await importFile(file);
     if (!cards || cards.length === 0) {
-      setStatus(`No cards found in ${file.name}. Try a different layout.`, false);
+      setStatus(`No cards found in ${file.name}. If it's a scanned/image file, the text can't be read.`, false);
       fileInput.value = '';
       return;
     }
-    // Import into a brand-new deck named after the file.
     const deckName = uniqueName((suggestedName && suggestedName.trim()) || baseName(file.name) || 'Imported');
     const d = { id: uid(), name: deckName, cards };
     state.decks.push(d);
     state.activeId = d.id;
     save();
     renderDeckOptions();
-    order = [];
-    updateCount();
     document.getElementById('bulk-input').value = cardsToText(cards);
+    updateCount();
     setStatus(`Imported ${cards.length} cards into “${deckName}” (${method}).`);
   } catch (err) {
     setStatus(err.message || 'Could not read that file.', false);
@@ -491,7 +549,7 @@ load();
 save();
 renderDeckOptions();
 updateCount();
-showView('study');
+showView('home');
 maybeShowInstallBanner();
 
 if ('serviceWorker' in navigator) {
