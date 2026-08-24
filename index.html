@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <title>Flashcards</title>
+  <meta name="description" content="Make flashcards from a list of questions and answers." />
+
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Flashcards" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <link rel="icon" href="icons/icon-192.png" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Flashcards</h1>
+
+    <div class="deck-bar">
+      <select id="deck-select" aria-label="Select deck"></select>
+      <button id="new-deck-btn" class="icon-btn" title="New deck" aria-label="New deck">+</button>
+      <button id="rename-deck-btn" class="icon-btn" title="Rename deck" aria-label="Rename deck">&#9998;</button>
+      <button id="delete-deck-btn" class="icon-btn" title="Delete deck" aria-label="Delete deck">&#128465;</button>
+    </div>
+
+    <nav class="tabs">
+      <button class="tab active" data-view="study">Study</button>
+      <button class="tab" data-view="edit">Edit</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- STUDY VIEW -->
+    <section id="study-view" class="view active">
+      <div id="empty-state" class="empty">
+        <p>This deck has no cards yet.</p>
+        <button class="btn primary" data-goto="edit">Add or import cards</button>
+      </div>
+
+      <div id="study-area" class="hidden">
+        <div class="progress">
+          <span id="progress-text">1 / 1</span>
+          <div class="progress-bar"><div id="progress-fill"></div></div>
+        </div>
+
+        <div id="card" class="card" role="button" tabindex="0" aria-label="Flashcard, tap to flip">
+          <div class="card-inner">
+            <div class="card-face card-front">
+              <span class="card-label">Question</span>
+              <p id="card-question"></p>
+            </div>
+            <div class="card-face card-back">
+              <span class="card-label">Answer</span>
+              <p id="card-answer"></p>
+            </div>
+          </div>
+        </div>
+        <p class="hint">Tap the card to flip</p>
+
+        <div class="controls">
+          <button id="prev-btn" class="btn">&#8592; Prev</button>
+          <button id="shuffle-btn" class="btn">Shuffle</button>
+          <button id="next-btn" class="btn">Next &#8594;</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- EDIT VIEW -->
+    <section id="edit-view" class="view">
+      <div class="import-row">
+        <label class="btn" for="file-input">Import file&hellip;</label>
+        <input id="file-input" type="file" accept=".docx,.json,.txt,.csv" hidden />
+        <span class="import-hint">.docx, .csv, .txt, or a deck .json</span>
+      </div>
+
+      <p class="help">
+        Or type one card per line as <code>question | answer</code>
+        (also accepts <code>question - answer</code>, a tab, or CSV).
+      </p>
+      <textarea id="bulk-input" rows="10" spellcheck="false"
+        placeholder="What is the capital of France? | Paris&#10;2 + 2 | 4&#10;Largest planet | Jupiter"></textarea>
+      <div class="edit-actions">
+        <button id="save-btn" class="btn primary">Save cards</button>
+        <button id="export-btn" class="btn">Export deck</button>
+        <button id="clear-btn" class="btn danger">Clear</button>
+      </div>
+      <p id="edit-status" class="status"></p>
+      <p class="count"><span id="card-count">0</span> cards in this deck</p>
+    </section>
+  </main>
+
+  <div id="install-banner" class="install-banner hidden">
+    <span>Add this app to your home screen: tap <strong>Share</strong> then <strong>Add to Home Screen</strong>.</span>
+    <button id="install-dismiss" aria-label="Dismiss">&times;</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
