@@ -39,6 +39,7 @@ const SAMPLE_DECKS = [
 let state = { decks: [], activeId: null };
 let studyDeckIds = [];   // decks chosen in the picker (multi-select)
 let studyCards = [];     // flattened cards for the current study session
+let reverseMode = false; // when true, show the answer and guess the question
 let order = [];
 let pos = 0;
 
@@ -387,6 +388,8 @@ const studyArea = document.getElementById('study-area');
 function openDeckPicker() {
   studyArea.classList.add('hidden');
   deckPicker.classList.remove('hidden');
+  const ss = document.getElementById('search-status');
+  if (ss) ss.textContent = '';
   renderDeckList();
 }
 
@@ -458,14 +461,36 @@ document.getElementById('start-study-btn').addEventListener('click', () => {
 
 document.getElementById('back-to-decks').addEventListener('click', openDeckPicker);
 
+// Search every deck's questions AND answers, then study the matches as a custom set.
+document.getElementById('search-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const term = document.getElementById('search-input').value.trim();
+  const statusEl = document.getElementById('search-status');
+  if (!term) { statusEl.textContent = ''; return; }
+  const needle = term.toLowerCase();
+  const matches = [];
+  for (const d of state.decks) {
+    for (const c of d.cards) {
+      if (c.q.toLowerCase().includes(needle) || c.a.toLowerCase().includes(needle)) matches.push(c);
+    }
+  }
+  if (matches.length === 0) {
+    statusEl.textContent = `No cards match “${term}”.`;
+    return;
+  }
+  statusEl.textContent = '';
+  studyDeckIds = [];
+  const reverse = document.getElementById('reverse-mode').checked;
+  beginSession(matches, `Search “${term}” · ${matches.length} card${matches.length === 1 ? '' : 's'}`, reverse);
+});
+
 function startStudy(ids, onlyFlagged) {
   studyDeckIds = ids;
   const selected = state.decks.filter(d => ids.includes(d.id));
   let cards = selected.flatMap(d => d.cards);
   if (onlyFlagged) cards = cards.filter(c => c.flagged);
-  studyCards = cards;
 
-  if (studyCards.length === 0) {
+  if (cards.length === 0) {
     alert(onlyFlagged
       ? 'No flagged cards in the selected deck(s). Flag some cards while studying first.'
       : 'The selected deck(s) have no cards.');
@@ -474,10 +499,20 @@ function startStudy(ids, onlyFlagged) {
 
   const scope = onlyFlagged ? 'flagged · ' : '';
   const label = selected.length === 1
-    ? `${selected[0].name} · ${scope}${studyCards.length} cards`
-    : `${selected.length} decks · ${scope}${studyCards.length} cards`;
-  document.getElementById('study-deck-label').textContent = label;
+    ? `${selected[0].name} · ${scope}${cards.length} cards`
+    : `${selected.length} decks · ${scope}${cards.length} cards`;
+  const reverse = document.getElementById('reverse-mode').checked;
+  beginSession(cards, label, reverse);
+}
 
+// Shared entry point for deck-based, flagged, and search sessions.
+function beginSession(cards, label, reverse) {
+  studyCards = cards;
+  reverseMode = !!reverse;
+  document.getElementById('study-deck-label').textContent =
+    (reverseMode ? '↔ ' : '') + label;
+  document.getElementById('front-label').textContent = reverseMode ? 'Answer' : 'Question';
+  document.getElementById('back-label').textContent = reverseMode ? 'Question' : 'Answer';
   buildOrder(false);
   deckPicker.classList.add('hidden');
   studyArea.classList.remove('hidden');
@@ -508,8 +543,8 @@ function showCard() {
   if (pos >= order.length) pos = 0;
   const card = studyCards[order[pos]];
   cardEl.classList.remove('flipped');
-  questionEl.textContent = card.q;
-  answerEl.textContent = card.a;
+  questionEl.textContent = reverseMode ? card.a : card.q;
+  answerEl.textContent = reverseMode ? card.q : card.a;
   flagCheck.checked = !!card.flagged;
   progressText.textContent = `${pos + 1} / ${order.length}`;
   progressFill.style.width = `${((pos + 1) / order.length) * 100}%`;

@@ -241,6 +241,24 @@ main {
 
 /* Study deck picker */
 #deck-picker h2 { font-size: 20px; margin: 4px 0 6px; }
+
+.search-row {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+#search-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--surface-2);
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-size: 15px;
+}
+.search-row .btn { flex: 0 0 auto; }
+.search-status { color: var(--muted); font-size: 13px; min-height: 1em; margin: 2px 0 0; }
 .deck-list {
   list-style: none;
   padding: 0;

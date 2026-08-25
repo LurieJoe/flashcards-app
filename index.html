@@ -89,7 +89,15 @@
       <!-- Deck picker -->
       <div id="deck-picker">
         <h2>Choose deck(s) to study</h2>
-        <p class="help">Select one or more decks. Multiple decks are studied together.</p>
+
+        <form id="search-form" class="search-row" role="search">
+          <input id="search-input" type="search" inputmode="search"
+                 placeholder="Search all decks (e.g. Washington)…" aria-label="Search all decks" />
+          <button type="submit" id="search-btn" class="btn">Search</button>
+        </form>
+        <p id="search-status" class="search-status"></p>
+
+        <p class="help">Or select one or more decks. Multiple decks are studied together.</p>
         <ul id="deck-list" class="deck-list"></ul>
         <div id="picker-empty" class="empty hidden">
           <p>You don't have any cards yet.</p>
@@ -100,6 +108,10 @@
             <input type="checkbox" id="only-flagged" />
             <span>Only study flagged cards</span>
             <span id="flagged-total" class="deck-item-count"></span>
+          </label>
+          <label id="reverse-row" class="toggle-row">
+            <input type="checkbox" id="reverse-mode" />
+            <span>Reverse — show the answer, guess the question</span>
           </label>
           <div class="controls">
             <button id="select-all-btn" class="btn">Select all</button>
@@ -122,11 +134,11 @@
         <div id="card" class="card" role="button" tabindex="0" aria-label="Flashcard, tap to flip">
           <div class="card-inner">
             <div class="card-face card-front">
-              <span class="card-label">Question</span>
+              <span class="card-label" id="front-label">Question</span>
               <p id="card-question"></p>
             </div>
             <div class="card-face card-back">
-              <span class="card-label">Answer</span>
+              <span class="card-label" id="back-label">Answer</span>
               <p id="card-answer"></p>
             </div>
           </div>
