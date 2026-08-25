@@ -777,6 +777,54 @@ document.getElementById('save-btn').addEventListener('click', () => {
   setStatus(`Saved ${parsed.length} card${parsed.length === 1 ? '' : 's'}.`);
 });
 
+/* ---------- Auto-generate a deck from a topic (offline packs) ---------- */
+(function initGenerator() {
+  const listEl = document.getElementById('gen-topic-list');
+  if (listEl && window.TOPIC_PACKS) {
+    listEl.textContent = window.TOPIC_PACKS.map(p => p.name).join(' · ');
+  }
+  const form = document.getElementById('gen-form');
+  if (!form) return;
+  const statusEl = document.getElementById('gen-status');
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const topic = document.getElementById('gen-topic').value.trim();
+    const count = parseInt(document.getElementById('gen-count').value, 10) || 0;
+    if (!topic) { setGenStatus('Type a topic first (e.g. Animals).', false); return; }
+
+    const pack = window.matchTopic(topic);
+    if (!pack) {
+      const names = window.TOPIC_PACKS.map(p => p.name).join(', ');
+      setGenStatus(`No built-in pack for “${topic}”. Try one of: ${names}.`, false);
+      return;
+    }
+
+    const cards = pack.cardsFor(count);
+    const requested = count > 0 ? count : cards.length;
+    const name = uniqueName(pack.name);
+    const deck = { id: uid(), name, cards };
+    state.decks.push(deck);
+    state.activeId = deck.id;
+    save();
+    renderDeckOptions();
+    document.getElementById('bulk-input').value = cardsToText(cards);
+    updateCount();
+
+    const capped = requested > cards.length
+      ? ` (that pack only has ${cards.length})`
+      : '';
+    setGenStatus(`Created “${name}” with ${cards.length} card${cards.length === 1 ? '' : 's'}${capped}. Ready to study!`);
+    document.getElementById('gen-topic').value = '';
+  });
+
+  function setGenStatus(msg, ok = true) {
+    statusEl.style.color = ok ? '#4ade80' : 'var(--danger)';
+    statusEl.textContent = msg;
+    if (msg && ok) setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 6000);
+  }
+})();
+
 document.getElementById('clear-btn').addEventListener('click', () => {
   if (!confirm('Clear all cards in this deck?')) return;
   activeDeck().cards = [];

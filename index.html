@@ -146,6 +146,25 @@
         <button id="delete-deck-btn" class="icon-btn" title="Delete deck" aria-label="Delete deck">&#128465;</button>
       </div>
 
+      <section class="generator">
+        <h3>✨ Auto-create a deck</h3>
+        <p class="help">Type a topic and pick how many cards. Built-in packs are generated
+           on your device — nothing leaves your phone.</p>
+        <form id="gen-form" class="gen-row">
+          <input id="gen-topic" type="text" placeholder="e.g. Animals, World Capitals, Spanish"
+                 aria-label="Topic" autocomplete="off" />
+          <select id="gen-count" aria-label="Number of cards">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="0">All</option>
+          </select>
+          <button type="submit" id="gen-btn" class="btn primary">Generate</button>
+        </form>
+        <p id="gen-status" class="status"></p>
+        <p class="gen-topics">Available: <span id="gen-topic-list"></span></p>
+      </section>
+
       <div class="import-row">
         <label class="btn" for="file-input">Import file&hellip;</label>
         <input id="file-input" type="file" accept=".docx,.json,.txt,.csv" hidden />
@@ -247,6 +266,7 @@
     <button id="install-dismiss" aria-label="Dismiss">&times;</button>
   </div>
 
+  <script src="generators.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

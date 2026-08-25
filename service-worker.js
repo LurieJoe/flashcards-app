@@ -1,10 +1,11 @@
 'use strict';
 
-const CACHE = 'flashcards-v10';
+const CACHE = 'flashcards-v11';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
+  './generators.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon-180.png',
