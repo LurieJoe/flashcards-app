@@ -885,5 +885,32 @@ showView('home');
 maybeShowInstallBanner();
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));
+  // Reload once when a new service worker takes control, so updates apply immediately.
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').then(reg => {
+      // Check for a new version now and whenever the app regains focus.
+      reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+      // If an updated worker is waiting, ask it to activate right away.
+      function promote(w) {
+        if (w && w.state === 'installed' && navigator.serviceWorker.controller) {
+          w.postMessage('skipWaiting');
+        }
+      }
+      if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (nw) nw.addEventListener('statechange', () => promote(nw));
+      });
+    }).catch(() => {});
+  });
 }
