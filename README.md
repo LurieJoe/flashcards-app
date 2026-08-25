@@ -36,6 +36,10 @@ Three tabs — **Home**, **Study**, and **Import**:
     Flags are saved per card. The deck picker shows a **⚑ count** per deck, and an
     **"Only study flagged cards"** toggle lets you drill just the flagged ones across
     the selected deck(s).
+  - **Hide a deck:** swipe a deck row left (or hover on desktop) to reveal **Hide** and
+    remove it from the Study list without deleting it. Hidden decks collect under a
+    **"Hidden decks (N)"** section with an **Unhide** button, and still appear (marked
+    "— hidden") in the Import deck menu.
 - **Themes:** in **⚙ Settings** choose a **mode** (System / Light / Dark) and an
   **accent color** (Indigo, Blue, Teal, Green, Purple, Rose, Orange, Cranberry). Mode and
   accent are independent and combine; **System** follows your phone's setting live. Your

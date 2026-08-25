@@ -354,6 +354,66 @@ main {
   padding: 2px 10px;
 }
 
+/* Swipe-to-hide deck rows */
+.deck-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.deck-swipe {
+  position: relative;
+  z-index: 1;
+  transition: transform 0.18s ease;
+  will-change: transform;
+}
+.deck-hide-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 88px;
+  border: 0;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  z-index: 0;
+}
+.deck-row.revealed .deck-swipe { transform: translateX(-88px); }
+@media (hover: hover) {
+  .deck-row:hover .deck-swipe { transform: translateX(-88px); }
+}
+
+/* Hidden decks manager */
+.hidden-decks { margin-top: 8px; }
+.hidden-decks-box {
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+  padding: 4px 14px;
+}
+.hidden-decks-box summary {
+  cursor: pointer;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  list-style: none;
+}
+.hidden-decks-box summary::-webkit-details-marker { display: none; }
+.hidden-decks-box summary::before { content: "▸ "; }
+.hidden-decks-box[open] summary::before { content: "▾ "; }
+.hidden-deck-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--surface-2);
+}
+.hidden-deck-name { overflow-wrap: anywhere; font-size: 15px; }
+
 .study-top {
   display: flex;
   align-items: center;

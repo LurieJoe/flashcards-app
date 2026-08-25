@@ -356,7 +356,7 @@ function renderDeckOptions() {
   for (const d of state.decks) {
     const opt = document.createElement('option');
     opt.value = d.id;
-    opt.textContent = `${d.name} (${d.cards.length})`;
+    opt.textContent = `${d.name} (${d.cards.length})` + (d.hidden ? ' — hidden' : '');
     if (d.id === state.activeId) opt.selected = true;
     deckSelect.appendChild(opt);
   }
@@ -418,17 +418,42 @@ function openDeckPicker() {
   renderDeckList();
 }
 
+function setDeckHidden(id, hidden) {
+  const d = state.decks.find(x => x.id === id);
+  if (!d) return;
+  d.hidden = hidden;
+  save();
+  renderDeckList();
+}
+
 function renderDeckList() {
-  const anyCards = state.decks.some(d => d.cards.length > 0);
-  document.getElementById('picker-empty').classList.toggle('hidden', anyCards);
-  document.getElementById('picker-controls').classList.toggle('hidden', !anyCards);
-  deckListEl.classList.toggle('hidden', !anyCards);
+  const visibleDecks = state.decks.filter(d => !d.hidden);
+  const hiddenDecks = state.decks.filter(d => d.hidden);
+  const anyVisibleCards = visibleDecks.some(d => d.cards.length > 0);
+  const anyCardsAtAll = state.decks.some(d => d.cards.length > 0);
+
+  document.getElementById('picker-empty').classList.toggle('hidden', anyCardsAtAll);
+  document.getElementById('picker-controls').classList.toggle('hidden', !anyVisibleCards);
+  deckListEl.classList.toggle('hidden', !anyVisibleCards);
 
   deckListEl.innerHTML = '';
   const preselect = studyDeckIds.length ? studyDeckIds : [state.activeId];
-  for (const d of state.decks) {
+  for (const d of visibleDecks) {
     const flagged = d.cards.filter(c => c.flagged).length;
     const li = document.createElement('li');
+    li.className = 'deck-row';
+
+    // Hide button revealed behind the row (swipe-left on touch, hover on desktop).
+    const hideBtn = document.createElement('button');
+    hideBtn.type = 'button';
+    hideBtn.className = 'deck-hide-btn';
+    hideBtn.textContent = 'Hide';
+    hideBtn.setAttribute('aria-label', `Hide ${d.name} from Study`);
+    hideBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setDeckHidden(d.id, true); });
+
+    const swipe = document.createElement('div');
+    swipe.className = 'deck-swipe';
+
     const label = document.createElement('label');
     label.className = 'deck-item' + (d.cards.length === 0 ? ' disabled' : '');
 
@@ -455,14 +480,89 @@ function renderDeckList() {
       label.appendChild(flag);
     }
     label.appendChild(count);
-    li.appendChild(label);
+    swipe.appendChild(label);
+    li.appendChild(hideBtn);
+    li.appendChild(swipe);
+    attachSwipeToHide(li, swipe, label, cb);
     deckListEl.appendChild(li);
   }
+
+  renderHiddenDecks(hiddenDecks);
   updateFlaggedTotal();
 }
 
+// Touch swipe-left reveals the Hide button; tapping a revealed row closes it.
+function attachSwipeToHide(row, swipe, label, cb) {
+  const OPEN = 88; // px of reveal, matches .deck-hide-btn width
+  let startX = null, base = 0, moved = false;
+
+  const close = () => { row.classList.remove('revealed'); swipe.style.transform = ''; };
+  const open = () => { row.classList.add('revealed'); swipe.style.transform = `translateX(-${OPEN}px)`; };
+
+  swipe.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    base = row.classList.contains('revealed') ? -OPEN : 0;
+    moved = false;
+  }, { passive: true });
+
+  swipe.addEventListener('touchmove', (e) => {
+    if (startX === null) return;
+    const dx = e.touches[0].clientX - startX;
+    if (Math.abs(dx) > 6) moved = true;
+    let t = Math.max(-OPEN, Math.min(0, base + dx));
+    swipe.style.transform = `translateX(${t}px)`;
+  }, { passive: true });
+
+  swipe.addEventListener('touchend', () => {
+    if (startX === null) return;
+    const current = new DOMMatrix(getComputedStyle(swipe).transform).m41;
+    if (current <= -OPEN / 2) open(); else close();
+    startX = null;
+  });
+
+  // If revealed, a tap closes instead of toggling the checkbox.
+  label.addEventListener('click', (e) => {
+    if (row.classList.contains('revealed')) { e.preventDefault(); close(); }
+  });
+  // Close any other open row when this one is interacted with.
+  swipe.addEventListener('touchstart', () => {
+    deckListEl.querySelectorAll('.deck-row.revealed').forEach(r => {
+      if (r !== row) { r.classList.remove('revealed'); const s = r.querySelector('.deck-swipe'); if (s) s.style.transform = ''; }
+    });
+  }, { passive: true });
+}
+
+function renderHiddenDecks(hiddenDecks) {
+  const wrap = document.getElementById('hidden-decks');
+  wrap.innerHTML = '';
+  if (!hiddenDecks.length) return;
+
+  const details = document.createElement('details');
+  details.className = 'hidden-decks-box';
+  const summary = document.createElement('summary');
+  summary.textContent = `Hidden decks (${hiddenDecks.length})`;
+  details.appendChild(summary);
+
+  for (const d of hiddenDecks) {
+    const row = document.createElement('div');
+    row.className = 'hidden-deck-row';
+    const name = document.createElement('span');
+    name.className = 'hidden-deck-name';
+    name.textContent = `${d.name} (${d.cards.length})`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn small';
+    btn.textContent = 'Unhide';
+    btn.addEventListener('click', () => setDeckHidden(d.id, false));
+    row.appendChild(name);
+    row.appendChild(btn);
+    details.appendChild(row);
+  }
+  wrap.appendChild(details);
+}
+
 function updateFlaggedTotal() {
-  const total = state.decks.reduce((n, d) => n + d.cards.filter(c => c.flagged).length, 0);
+  const total = state.decks.filter(d => !d.hidden).reduce((n, d) => n + d.cards.filter(c => c.flagged).length, 0);
   const badge = document.getElementById('flagged-total');
   badge.textContent = total ? `${total}` : '';
   const row = document.getElementById('only-flagged-row');
@@ -495,6 +595,7 @@ document.getElementById('search-form').addEventListener('submit', (e) => {
   const needle = term.toLowerCase();
   const matches = [];
   for (const d of state.decks) {
+    if (d.hidden) continue;
     for (const c of d.cards) {
       if (c.q.toLowerCase().includes(needle) || c.a.toLowerCase().includes(needle)) matches.push(c);
     }
