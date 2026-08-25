@@ -40,6 +40,7 @@ let state = { decks: [], activeId: null };
 let studyDeckIds = [];   // decks chosen in the picker (multi-select)
 let studyCards = [];     // flattened cards for the current study session
 let reverseMode = false; // when true, show the answer and guess the question
+let editOpenedOnce = false; // default Import tab to "My cards" on first open per session
 let order = [];
 let pos = 0;
 
@@ -323,7 +324,16 @@ function showView(name) {
   tabs.forEach(t => t.classList.toggle('active', t.dataset.view === name));
   if (name !== 'study') stopTimer();
   if (name === 'study') openDeckPicker();
-  if (name === 'edit') { renderDeckOptions(); document.getElementById('bulk-input').value = cardsToText(activeDeck().cards); updateCount(); }
+  if (name === 'edit') {
+    if (!editOpenedOnce) {
+      editOpenedOnce = true;
+      const myCards = state.decks.find(d => d.name === 'My cards');
+      if (myCards) state.activeId = myCards.id;
+    }
+    renderDeckOptions();
+    document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
+    updateCount();
+  }
 }
 
 tabs.forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
