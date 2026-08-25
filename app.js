@@ -318,6 +318,21 @@ function setStatus(msg, ok = true) {
   if (msg) setTimeout(() => { if (status.textContent === msg) status.textContent = ''; }, 4000);
 }
 
+let toastTimer = null;
+function toast(msg) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
 function showView(name) {
   document.getElementById('settings-view').classList.remove('active');
   Object.entries(views).forEach(([k, el]) => el.classList.toggle('active', k === name));
@@ -443,13 +458,26 @@ function renderDeckList() {
     const li = document.createElement('li');
     li.className = 'deck-row';
 
-    // Hide button revealed behind the row (swipe-left on touch, hover on desktop).
+    // Actions revealed behind the row (swipe-left on touch, hover on desktop).
+    const actions = document.createElement('div');
+    actions.className = 'deck-actions';
+
+    const shareBtn = document.createElement('button');
+    shareBtn.type = 'button';
+    shareBtn.className = 'deck-share-btn';
+    shareBtn.textContent = 'Share';
+    shareBtn.setAttribute('aria-label', `Share ${d.name}`);
+    shareBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); shareDeck(d); });
+
     const hideBtn = document.createElement('button');
     hideBtn.type = 'button';
     hideBtn.className = 'deck-hide-btn';
     hideBtn.textContent = 'Hide';
     hideBtn.setAttribute('aria-label', `Hide ${d.name} from Study`);
     hideBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setDeckHidden(d.id, true); });
+
+    actions.appendChild(shareBtn);
+    actions.appendChild(hideBtn);
 
     const swipe = document.createElement('div');
     swipe.className = 'deck-swipe';
@@ -481,7 +509,7 @@ function renderDeckList() {
     }
     label.appendChild(count);
     swipe.appendChild(label);
-    li.appendChild(hideBtn);
+    li.appendChild(actions);
     li.appendChild(swipe);
     attachSwipeToHide(li, swipe, label, cb);
     deckListEl.appendChild(li);
@@ -493,7 +521,7 @@ function renderDeckList() {
 
 // Touch swipe-left reveals the Hide button; tapping a revealed row closes it.
 function attachSwipeToHide(row, swipe, label, cb) {
-  const OPEN = 88; // px of reveal, matches .deck-hide-btn width
+  const OPEN = 176; // px of reveal, matches .deck-actions width (Share + Hide)
   let startX = null, base = 0, moved = false;
 
   const close = () => { row.classList.remove('revealed'); swipe.style.transform = ''; };
@@ -946,15 +974,37 @@ document.getElementById('clear-btn').addEventListener('click', () => {
   setStatus('Deck cleared.', false);
 });
 
-document.getElementById('export-btn').addEventListener('click', () => {
-  const d = activeDeck();
-  const blob = new Blob([JSON.stringify({ name: d.name, cards: d.cards }, null, 2)], { type: 'application/json' });
+function deckFilename(d) { return `${d.name.replace(/[^\w.-]+/g, '_')}.json`; }
+function deckJSON(d) { return JSON.stringify({ name: d.name, cards: d.cards }, null, 2); }
+
+function downloadDeck(d) {
+  const blob = new Blob([deckJSON(d)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${d.name.replace(/[^\w.-]+/g, '_')}.json`;
+  a.download = deckFilename(d);
   a.click();
   URL.revokeObjectURL(a.href);
-});
+}
+
+// Share a deck as a .json file via the native share sheet (iOS/Android),
+// falling back to a download on platforms without Web Share file support (desktop).
+async function shareDeck(d) {
+  const file = new File([deckJSON(d)], deckFilename(d), { type: 'application/json' });
+  const shareData = { files: [file], title: d.name, text: `Flashcards deck: “${d.name}” (${d.cards.length} cards)` };
+  if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+    try {
+      await navigator.share(shareData);
+    } catch (err) {
+      if (err && err.name !== 'AbortError') downloadDeck(d); // real failure -> fallback
+    }
+    return;
+  }
+  // No Web Share (file) support: download the .json so the user can attach/send it.
+  downloadDeck(d);
+  toast(`“${d.name}” saved as a file — attach it in your email or messaging app to share.`);
+}
+
+document.getElementById('export-btn').addEventListener('click', () => downloadDeck(activeDeck()));
 
 /* ---------- File import ---------- */
 const fileInput = document.getElementById('file-input');
