@@ -31,10 +31,14 @@ Three tabs — **Home**, **Study**, and **Import**:
     Flags are saved per card. The deck picker shows a **⚑ count** per deck, and an
     **"Only study flagged cards"** toggle lets you drill just the flagged ones across
     the selected deck(s).
-- **Themes:** on **Home → Appearance**, choose a **mode** (System / Light / Dark) and an
+- **Themes:** in **⚙ Settings** choose a **mode** (System / Light / Dark) and an
   **accent color** (Indigo, Blue, Teal, Green, Purple, Rose, Orange, Cranberry). Mode and
   accent are independent and combine; **System** follows your phone's setting live. Your
   choice is saved and applied before first paint (no flash).
+- **Settings (⚙ top-left):** Appearance (theme + accent), Preferences
+  (**sound effects** ding on flip, **study timer** with tap-to-pause, **font size**
+  Small/Default/Large/XL), a **Help Center** FAQ, **Feedback** (opens a prefilled GitHub
+  issue), and a **Privacy Policy**.
 - Everything is saved locally (browser `localStorage`) and survives app restarts.
 
 Example paste input:

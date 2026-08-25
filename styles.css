@@ -8,7 +8,14 @@
   --muted: #94a3b8;
   --danger: #ef4444;
   --radius: 16px;
+  --fscale: 1;
 }
+
+/* Font size preference */
+[data-font="small"]   { --fscale: 0.85; }
+[data-font="default"] { --fscale: 1; }
+[data-font="large"]   { --fscale: 1.2; }
+[data-font="xl"]      { --fscale: 1.45; }
 
 /* ---- Theme modes ---- */
 /* Dark palette (default, and applied when [data-theme="dark"]). */
@@ -78,6 +85,22 @@ body {
   font-size: 22px;
   text-align: center;
 }
+
+.gear-btn {
+  position: absolute;
+  left: 12px;
+  top: calc(env(safe-area-inset-top) + 8px);
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.gear-btn:active { background: var(--surface-2); }
 
 .deck-bar {
   display: flex;
@@ -428,7 +451,7 @@ main {
 .card-back .card-label { color: rgba(255,255,255,0.75); }
 
 .card-face p {
-  font-size: 24px;
+  font-size: calc(24px * var(--fscale));
   line-height: 1.35;
   margin: 0;
   overflow-wrap: anywhere;
@@ -536,3 +559,82 @@ textarea {
   font-size: 22px;
   cursor: pointer;
 }
+
+/* ---- Timer ---- */
+.timer {
+  flex: 0 0 auto;
+  margin-left: auto;
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
+  color: var(--text);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  cursor: pointer;
+}
+.timer.paused { color: var(--muted); border-style: dashed; }
+
+/* ---- Settings screen ---- */
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.settings-head h2 { margin: 0; font-size: 22px; }
+
+.settings-group {
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.settings-group > h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.settings-note { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+.settings-version { text-align: center; color: var(--muted); font-size: 12px; margin: 24px 0; }
+.settings-group .setting { margin-bottom: 14px; }
+.settings-group .setting:last-child { margin-bottom: 0; }
+.settings-group .toggle-row { margin-bottom: 10px; }
+#feedback-link { display: inline-block; text-decoration: none; }
+
+/* FAQ accordion */
+.faq-item {
+  border-bottom: 1px solid var(--surface-2);
+  padding: 4px 0;
+}
+.faq-item:last-child { border-bottom: 0; }
+.faq-item summary {
+  cursor: pointer;
+  padding: 10px 4px;
+  font-weight: 600;
+  font-size: calc(15px * var(--fscale));
+  list-style: none;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::before { content: "＋ "; color: var(--primary); font-weight: 700; }
+.faq-item[open] summary::before { content: "－ "; }
+.faq-item p {
+  margin: 0 4px 12px;
+  color: var(--muted);
+  font-size: calc(14px * var(--fscale));
+  line-height: 1.5;
+}
+
+/* Privacy */
+.privacy p { font-size: calc(14px * var(--fscale)); line-height: 1.5; }
+.privacy ul { padding-left: 18px; margin: 10px 0; }
+.privacy li { font-size: calc(14px * var(--fscale)); line-height: 1.5; margin-bottom: 8px; }
+.privacy .privacy-foot { color: var(--muted); }
+
+/* Font scale applied to a few more reading surfaces */
+.welcome p { font-size: calc(16px * var(--fscale)); }
+.deck-item-name { font-size: calc(16px * var(--fscale)); }

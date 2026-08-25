@@ -318,14 +318,27 @@ function setStatus(msg, ok = true) {
 }
 
 function showView(name) {
+  document.getElementById('settings-view').classList.remove('active');
   Object.entries(views).forEach(([k, el]) => el.classList.toggle('active', k === name));
   tabs.forEach(t => t.classList.toggle('active', t.dataset.view === name));
+  if (name !== 'study') stopTimer();
   if (name === 'study') openDeckPicker();
   if (name === 'edit') { renderDeckOptions(); document.getElementById('bulk-input').value = cardsToText(activeDeck().cards); updateCount(); }
 }
 
 tabs.forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
 document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => showView(b.dataset.goto)));
+
+/* ---------- Settings screen ---------- */
+function openSettings() {
+  stopTimer();
+  Object.values(views).forEach(el => el.classList.remove('active'));
+  tabs.forEach(t => t.classList.remove('active'));
+  document.getElementById('settings-view').classList.add('active');
+  window.scrollTo(0, 0);
+}
+document.getElementById('settings-btn').addEventListener('click', openSettings);
+document.getElementById('settings-back').addEventListener('click', () => showView('home'));
 
 /* ---------- Import/Create: deck management ---------- */
 function renderDeckOptions() {
@@ -388,6 +401,8 @@ const studyArea = document.getElementById('study-area');
 function openDeckPicker() {
   studyArea.classList.add('hidden');
   deckPicker.classList.remove('hidden');
+  stopTimer();
+  timerEl.classList.add('hidden');
   const ss = document.getElementById('search-status');
   if (ss) ss.textContent = '';
   renderDeckList();
@@ -516,6 +531,7 @@ function beginSession(cards, label, reverse) {
   buildOrder(false);
   deckPicker.classList.add('hidden');
   studyArea.classList.remove('hidden');
+  startTimer();
   showCard();
 }
 
@@ -556,7 +572,7 @@ flagCheck.addEventListener('change', () => {
   save();
 });
 
-function flip() { cardEl.classList.toggle('flipped'); }
+function flip() { cardEl.classList.toggle('flipped'); playDing(); }
 function next() { pos = (pos + 1) % order.length; showCard(); }
 function prev() { pos = (pos - 1 + order.length) % order.length; showCard(); }
 
@@ -579,6 +595,175 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') next();
   if (e.key === 'ArrowLeft') prev();
 });
+
+/* ============================================================
+   Preferences: sound, timer, font size
+============================================================ */
+const PREF = {
+  sound: 'flashcards.pref.sound',
+  timer: 'flashcards.pref.timer',
+  font: 'flashcards.pref.font',
+};
+function prefBool(key, def) { const v = localStorage.getItem(key); return v === null ? def : v === '1'; }
+
+/* ---- Sound: a soft two-tone "ding" via Web Audio (no asset, offline) ---- */
+let audioCtx = null;
+function playDing() {
+  if (!prefBool(PREF.sound, false)) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const now = audioCtx.currentTime;
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    gain.connect(audioCtx.destination);
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);       // A5
+    osc.frequency.setValueAtTime(1318.5, now + 0.09); // E6
+    osc.connect(gain);
+    osc.start(now);
+    osc.stop(now + 0.36);
+  } catch (e) { /* ignore audio errors */ }
+}
+
+/* ---- Timer: stopwatch during study, tap to pause/resume ---- */
+const timerEl = document.getElementById('timer');
+let timerInt = null, timerAcc = 0, timerLast = 0, timerRunning = false;
+
+function fmtTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+function renderTimer() { timerEl.textContent = fmtTime(timerAcc); }
+function timerTick() {
+  if (!timerRunning) return;
+  const now = Date.now();
+  timerAcc += now - timerLast;
+  timerLast = now;
+  renderTimer();
+}
+function startTimer() {
+  stopTimer();
+  timerAcc = 0;
+  if (!prefBool(PREF.timer, false)) { timerEl.classList.add('hidden'); return; }
+  timerEl.classList.remove('hidden', 'paused');
+  timerRunning = true;
+  timerLast = Date.now();
+  renderTimer();
+  timerInt = setInterval(timerTick, 250);
+}
+function stopTimer() {
+  if (timerInt) { clearInterval(timerInt); timerInt = null; }
+  timerRunning = false;
+}
+function toggleTimer() {
+  if (!prefBool(PREF.timer, false) || !timerInt) return;
+  if (timerRunning) {
+    timerTick();               // capture the final slice
+    timerRunning = false;
+    timerEl.classList.add('paused');
+  } else {
+    timerRunning = true;
+    timerLast = Date.now();    // resume without a jump
+    timerEl.classList.remove('paused');
+  }
+}
+timerEl.addEventListener('click', toggleTimer);
+
+/* ---- Font size ---- */
+function applyFont() {
+  const size = localStorage.getItem(PREF.font) || 'default';
+  document.documentElement.setAttribute('data-font', size);
+  document.querySelectorAll('#font-size .seg').forEach(b =>
+    b.classList.toggle('active', b.dataset.font === size));
+}
+
+/* ---- Wire preference controls ---- */
+function initPrefs() {
+  const sound = document.getElementById('pref-sound');
+  const timer = document.getElementById('pref-timer');
+  sound.checked = prefBool(PREF.sound, false);
+  timer.checked = prefBool(PREF.timer, false);
+  sound.addEventListener('change', () => {
+    localStorage.setItem(PREF.sound, sound.checked ? '1' : '0');
+    if (sound.checked) playDing();
+  });
+  timer.addEventListener('change', () => {
+    localStorage.setItem(PREF.timer, timer.checked ? '1' : '0');
+    const studying = !studyArea.classList.contains('hidden') &&
+      views.study.classList.contains('active');
+    if (timer.checked && studying) startTimer();
+    else if (!timer.checked) { stopTimer(); timerEl.classList.add('hidden'); }
+  });
+  document.querySelectorAll('#font-size .seg').forEach(b =>
+    b.addEventListener('click', () => { localStorage.setItem(PREF.font, b.dataset.font); applyFont(); }));
+  applyFont();
+}
+
+/* ============================================================
+   Help Center (FAQ) + Privacy Policy content
+============================================================ */
+const FAQ = [
+  ['Where is my data stored?',
+   'Everything lives on your device in the browser\u2019s local storage. Your decks, cards, flags, and settings never leave your phone.'],
+  ['Does it work offline?',
+   'Yes. Once installed to your home screen, the app runs fully offline. You only need a connection the first time you open it (and to fetch updates).'],
+  ['How do I import questions?',
+   'Go to the Import tab and tap \u201cImport file\u2026\u201d. You can load a Word .docx, a .csv/.txt list, or a deck .json exported from this app. You can also type or paste cards as \u201cquestion | answer\u201d, one per line.'],
+  ['Why can\u2019t I import some PDFs or Word files?',
+   'Scanned or image-only documents contain pictures of text, not real text, so nothing can be extracted without OCR. Convert them to a text-based .docx (open in Word) first, then import.'],
+  ['How do decks work?',
+   'Each imported file becomes its own deck. Manage decks on the Import tab (create, rename, delete) and pick which deck to edit from the dropdown.'],
+  ['How do I study more than one deck at once?',
+   'On the Study tab, check multiple decks in the list \u2014 they\u2019re studied together as one combined set.'],
+  ['What does \u201cFlag for review\u201d do?',
+   'While studying, tick \u201cFlag this card for review\u201d to mark tricky cards. Back on the Study picker, turn on \u201cOnly study flagged cards\u201d to drill just those.'],
+  ['What is Reverse mode?',
+   'Turn on \u201cReverse\u201d in the Study picker to see the answer first and guess the question instead.'],
+  ['How does search work?',
+   'The search box on the Study tab scans every card\u2019s question and answer across all decks, and studies the matches as a custom set.'],
+  ['How do I install it on my iPhone?',
+   'Open the app in Safari, tap the Share button, then \u201cAdd to Home Screen\u201d.'],
+  ['How do I get updates?',
+   'Fully close the home-screen app and reopen it (once or twice). Your decks and settings are always preserved across updates.'],
+];
+
+function renderFaq() {
+  const wrap = document.getElementById('faq');
+  wrap.innerHTML = '';
+  for (const [q, a] of FAQ) {
+    const d = document.createElement('details');
+    d.className = 'faq-item';
+    const s = document.createElement('summary');
+    s.textContent = q;
+    const p = document.createElement('p');
+    p.textContent = a;
+    d.appendChild(s);
+    d.appendChild(p);
+    wrap.appendChild(d);
+  }
+}
+
+function renderPrivacy() {
+  const el = document.getElementById('privacy');
+  el.innerHTML = `
+    <p><strong>Your privacy is simple: nothing you enter leaves your device.</strong></p>
+    <ul>
+      <li><strong>No data collection.</strong> This app has no accounts, no sign-in, no analytics, and no tracking of any kind.</li>
+      <li><strong>Your questions &amp; answers stay local.</strong> Every deck and card you create or import is stored only in your browser\u2019s local storage on this device. It is never uploaded, transmitted, or shared.</li>
+      <li><strong>Files are processed on-device.</strong> When you import a .docx, .csv, or .json, it is read entirely within the app on your phone. The file\u2019s contents are not sent anywhere.</li>
+      <li><strong>No servers, no cookies.</strong> The app is a static page served over HTTPS and then cached for offline use. It makes no background network calls with your data.</li>
+      <li><strong>You are in control.</strong> Delete a card, clear a deck, or remove the app to erase your data at any time. Uninstalling or clearing your browser storage permanently deletes everything.</li>
+      <li><strong>Feedback is optional and separate.</strong> If you choose to send feedback, it opens GitHub in a new tab; only what you type there is shared, and only because you chose to send it.</li>
+    </ul>
+    <p class="privacy-foot">Because all data is stored locally, no one \u2014 including the developer \u2014 can see your decks or study activity.</p>
+  `;
+}
+
 
 /* ---------- Import/Create: editing ---------- */
 function updateCount() { document.getElementById('card-count').textContent = activeDeck().cards.length; }
@@ -691,6 +876,9 @@ load();
 ensureSamples();
 save();
 applyTheme();
+initPrefs();
+renderFaq();
+renderPrivacy();
 renderDeckOptions();
 updateCount();
 showView('home');
