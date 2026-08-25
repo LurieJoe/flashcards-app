@@ -897,6 +897,7 @@ function renderPrivacy() {
       <li><strong>Files are processed on-device.</strong> When you import a .docx, .csv, or .json, it is read entirely within the app on your phone. The file\u2019s contents are not sent anywhere.</li>
       <li><strong>No servers, no cookies.</strong> The app is a static page served over HTTPS and then cached for offline use. It makes no background network calls with your data.</li>
       <li><strong>You are in control.</strong> Delete a card, clear a deck, or remove the app to erase your data at any time. Uninstalling or clearing your browser storage permanently deletes everything.</li>
+      <li><strong>Sharing is user-initiated.</strong> Nothing is shared unless you tap <em>Share</em> on a deck. Then that deck (its name and cards) is handed to whatever destination <em>you</em> pick — AirDrop, Messages, email, or a saved file. The app has no access to where it goes, and it only leaves your device because you chose to send it.</li>
       <li><strong>Feedback is optional and separate.</strong> If you choose to send feedback, it opens GitHub in a new tab; only what you type there is shared, and only because you chose to send it.</li>
     </ul>
     <p class="privacy-foot">Because all data is stored locally, no one \u2014 including the developer \u2014 can see your decks or study activity.</p>
