@@ -175,7 +175,8 @@ main {
   text-align: center;
   padding: 24px 8px;
 }
-.welcome-icon { font-size: 56px; line-height: 1; margin-bottom: 8px; }
+.welcome-icon { line-height: 0; margin-bottom: 8px; }
+.welcome-icon svg { width: 116px; height: 116px; filter: drop-shadow(0 8px 18px rgba(0,0,0,.22)); }
 .welcome h2 { margin: 8px 0; font-size: 24px; }
 .welcome p { color: var(--muted); font-size: 16px; line-height: 1.5; }
 .home-actions {
