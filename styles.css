@@ -177,6 +177,12 @@ main {
 }
 .welcome-icon { line-height: 0; margin-bottom: 8px; }
 .welcome-icon svg { width: 116px; height: 116px; filter: drop-shadow(0 8px 18px rgba(0,0,0,.22)); }
+
+/* Flipper mascot emblems */
+.head-with-flipper { display: flex; align-items: center; gap: 10px; }
+.flipper-emblem { width: 32px; height: 32px; flex: 0 0 auto; filter: drop-shadow(0 3px 6px rgba(0,0,0,.25)); }
+.progress-line { display: flex; align-items: center; gap: 8px; }
+.flipper-mini { width: 22px; height: 22px; flex: 0 0 auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
 .welcome h2 { margin: 8px 0; font-size: 24px; }
 .welcome p { color: var(--muted); font-size: 16px; line-height: 1.5; }
 .home-actions {
