@@ -1,7 +1,7 @@
 {
-  "name": "Flashcards",
-  "short_name": "Flashcards",
-  "description": "Make flashcards from a list of questions and answers.",
+  "name": "Flashcard Flipper",
+  "short_name": "Flipper",
+  "description": "Flashcard Flipper — make and study flashcards from your own questions and answers, even offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

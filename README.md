@@ -1,8 +1,9 @@
-# Flashcards — installable iPhone app (PWA)
+# Flashcard Flipper — installable iPhone app (PWA)
 
 A self-contained flashcards app you install onto your iPhone/iPad **home screen** —
 no Mac, no Xcode, no signing, no expiring certificates. It works **fully offline**
-once installed and stores your cards on the device.
+once installed and stores your cards on the device. Its mascot is **Flipper**, a
+little origami bird folded from a flashcard.
 
 **Live app:** https://luriejoe.github.io/flashcards-app/
 
