@@ -229,7 +229,7 @@
   const presidentQA = (data) => data.map(([n, name, yrs]) => ({ q: `Who was U.S. President #${n}?`, a: `${name} (${yrs})` }));
   const elementQA = (data) => data.map(([name, sym, z]) => ({ q: `Chemical symbol for ${name}?`, a: `${sym} (atomic number ${z})` }));
   const langQA = (lang, data) => data.map(([en, tr]) => ({ q: `${lang}: ${en}`, a: tr }));
-  const colorQA = (data) => data.map(([name, hex]) => ({ q: `{{shape:square|${hex}|130}}`, a: `${name}\n{{c:${hex}|${hex}}}` }));
+  const colorQA = (data) => data.map(([name, hex]) => ({ q: `{{shape:square|${hex}|130}}`, a: `**${name}**\n${hex}` }));
   const shapeQA = (data) => data.map(([kind, name]) => ({ q: `{{shape:${kind}|#4f46e5|130}}`, a: name }));
 
   function multiplicationCards() {
