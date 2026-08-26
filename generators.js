@@ -206,12 +206,31 @@
     ['What is one right in the First Amendment?', 'Freedom of speech (also religion, press, assembly, petition)'],
   ];
 
+  const COLORS = [
+    ['Red', '#ef4444'], ['Orange', '#f97316'], ['Yellow', '#eab308'],
+    ['Green', '#22c55e'], ['Blue', '#3b82f6'], ['Indigo', '#4f46e5'],
+    ['Purple', '#8b5cf6'], ['Pink', '#ec4899'], ['Magenta', '#d946ef'],
+    ['Cyan', '#06b6d4'], ['Teal', '#14b8a6'], ['Lime', '#84cc16'],
+    ['Brown', '#92400e'], ['Maroon', '#7f1d1d'], ['Navy', '#1e3a8a'],
+    ['Gold', '#d4af37'], ['Silver', '#c0c0c0'], ['Gray', '#6b7280'],
+    ['Black', '#111111'], ['White', '#f8fafc'],
+  ];
+
+  const SHAPES = [
+    ['circle', 'Circle'], ['square', 'Square'], ['rectangle', 'Rectangle'],
+    ['oval', 'Oval'], ['triangle', 'Triangle'], ['diamond', 'Diamond'],
+    ['pentagon', 'Pentagon'], ['hexagon', 'Hexagon'], ['star', 'Star'],
+    ['heart', 'Heart'],
+  ];
+
   /* ---------- Card builders ---------- */
   const pairQA = (data) => data.map(([q, a]) => ({ q, a }));
   const capitalQA = (data) => data.map(([country, cap]) => ({ q: `Capital of ${country}?`, a: cap }));
   const presidentQA = (data) => data.map(([n, name, yrs]) => ({ q: `Who was U.S. President #${n}?`, a: `${name} (${yrs})` }));
   const elementQA = (data) => data.map(([name, sym, z]) => ({ q: `Chemical symbol for ${name}?`, a: `${sym} (atomic number ${z})` }));
   const langQA = (lang, data) => data.map(([en, tr]) => ({ q: `${lang}: ${en}`, a: tr }));
+  const colorQA = (data) => data.map(([name, hex]) => ({ q: `{{shape:square|${hex}|130}}`, a: `${name}\n{{c:${hex}|${hex}}}` }));
+  const shapeQA = (data) => data.map(([kind, name]) => ({ q: `{{shape:${kind}|#4f46e5|130}}`, a: name }));
 
   function multiplicationCards() {
     const out = [];
@@ -232,6 +251,8 @@
     { id: 'portuguese', name: 'Portuguese Vocabulary', keywords: ['portuguese', 'português', 'portugues'], all: () => langQA('Portuguese', PORTUGUESE) },
     { id: 'planets', name: 'Planets & Space', keywords: ['planets', 'planet', 'space', 'solar system', 'astronomy'], all: () => pairQA(PLANETS) },
     { id: 'us-civics', name: 'US Civics Basics', keywords: ['us civics', 'civics', 'citizenship', 'government'], all: () => pairQA(CIVICS) },
+    { id: 'colors', name: 'Colors', keywords: ['colors', 'colours', 'color', 'colour'], all: () => colorQA(COLORS) },
+    { id: 'shapes', name: 'Shapes', keywords: ['shapes', 'shape', 'geometry'], all: () => shapeQA(SHAPES) },
   ];
 
   // Attach a cardsFor(n) helper to each pack (n<=0 means "all").

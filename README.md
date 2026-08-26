@@ -18,7 +18,14 @@ Three tabs — **Home**, **Study**, and **Import**:
   *Spanish*) and pick a card count (10/25/50/All) to instantly build a deck from a
   bundled knowledge base — generated **on-device**, nothing leaves your phone. Built-in
   packs: Animals, World Capitals, US State Capitals, US Presidents, Multiplication Tables,
-  Chemical Elements, Spanish, French, Portuguese, Planets & Space, and US Civics Basics.
+  Chemical Elements, Spanish, French, Portuguese, Planets & Space, US Civics Basics,
+  Colors, and Shapes.
+- **Rich card formatting (optional):** card text supports a small, safe syntax —
+  `**bold**`, `*italic*`, line breaks, colored text `{{c:red|text}}` (name or `#hex`),
+  and filled shapes `{{shape:circle|#4f46e5|120}}` (circle, square, rectangle, oval,
+  triangle, diamond, pentagon, hexagon, star, heart). Rendered with HTML-escaping and a
+  strict whitelist, so shared decks can't inject anything. The **Colors** and **Shapes**
+  auto-create packs are built with this syntax.
 - **Import / create (Import tab):** tap **Import file…** to load cards from:
   - **`.docx`** (Word) — auto-detects 2-column tables, `question | answer` lines,
     `Q:`/`A:` labels, or alternating lines. Parsed fully offline on-device.

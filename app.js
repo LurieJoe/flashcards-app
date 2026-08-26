@@ -682,6 +682,76 @@ const progressText = document.getElementById('progress-text');
 const progressFill = document.getElementById('progress-fill');
 const flagCheck = document.getElementById('flag-check');
 
+/* ---------- Rich card renderer (safe subset: bold/italic/colors/shapes) ---------- */
+const NAMED_COLORS = {
+  red: '#ef4444', orange: '#f97316', yellow: '#eab308', green: '#22c55e',
+  blue: '#3b82f6', indigo: '#4f46e5', purple: '#8b5cf6', violet: '#8b5cf6',
+  pink: '#ec4899', magenta: '#d946ef', brown: '#92400e', black: '#111111',
+  white: '#f8fafc', gray: '#6b7280', grey: '#6b7280', cyan: '#06b6d4',
+  teal: '#14b8a6', lime: '#84cc16', gold: '#d4af37', silver: '#c0c0c0',
+  maroon: '#7f1d1d', navy: '#1e3a8a',
+};
+function safeColor(c) {
+  if (!c) return null;
+  c = String(c).trim().toLowerCase();
+  if (/^#[0-9a-f]{3}$|^#[0-9a-f]{4}$|^#[0-9a-f]{6}$|^#[0-9a-f]{8}$/.test(c)) return c;
+  if (NAMED_COLORS[c]) return NAMED_COLORS[c];
+  return null;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+const SHAPE_PATHS = {
+  circle: '<circle cx="50" cy="50" r="45"/>',
+  square: '<rect x="7" y="7" width="86" height="86" rx="6"/>',
+  rectangle: '<rect x="4" y="24" width="92" height="52" rx="6"/>',
+  oval: '<ellipse cx="50" cy="50" rx="46" ry="32"/>',
+  triangle: '<polygon points="50,8 92,90 8,90"/>',
+  diamond: '<polygon points="50,5 92,50 50,95 8,50"/>',
+  pentagon: '<polygon points="50,6 94,39 77,92 23,92 6,39"/>',
+  hexagon: '<polygon points="27,8 73,8 96,50 73,92 27,92 4,50"/>',
+  star: '<polygon points="50,5 61,38 96,38 68,59 79,93 50,72 21,93 32,59 4,38 39,38"/>',
+  heart: '<path d="M50 84 C 10 54 12 22 34 22 C 45 22 50 31 50 31 C 50 31 55 22 66 22 C 88 22 90 54 50 84 Z"/>',
+};
+function shapeSVG(kind, color, size) {
+  const body = SHAPE_PATHS[String(kind).trim().toLowerCase()] || SHAPE_PATHS.circle;
+  const s = Math.max(12, Math.min(400, Number(size) || 96));
+  const fill = safeColor(color) || 'currentColor';
+  return `<svg class="card-shape" viewBox="0 0 100 100" width="${s}" height="${s}" ` +
+    `fill="${fill}" stroke="rgba(120,120,120,0.35)" stroke-width="1" aria-hidden="true">${body}</svg>`;
+}
+function inlineMd(s) {
+  return s
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+function renderToken(inner) {
+  const segs = inner.split('|');
+  const head = segs[0].split(':');
+  const type = head[0].trim().toLowerCase();
+  if (type === 'shape') {
+    return shapeSVG(head[1] || 'circle', segs[1] || '', segs[2] || '');
+  }
+  if (type === 'c' || type === 'color') {
+    const color = safeColor(head[1] || '');
+    const txt = inlineMd(escapeHtml(segs.slice(1).join('|')));
+    return color ? `<span style="color:${color}">${txt}</span>` : txt;
+  }
+  return escapeHtml('{{' + inner + '}}');
+}
+function renderRich(el, text) {
+  const raw = text == null ? '' : String(text);
+  if (!/[*\n]|\{\{/.test(raw)) { el.textContent = raw; return; }
+  let out = '';
+  for (const part of raw.split(/(\{\{[^}]*\}\})/g)) {
+    const m = part.match(/^\{\{([^}]*)\}\}$/);
+    out += m ? renderToken(m[1]) : inlineMd(escapeHtml(part));
+  }
+  el.innerHTML = out;
+}
+
 function buildOrder(shuffle) {
   order = studyCards.map((_, i) => i);
   if (shuffle) {
@@ -698,8 +768,8 @@ function showCard() {
   if (pos >= order.length) pos = 0;
   const card = studyCards[order[pos]];
   cardEl.classList.remove('flipped');
-  questionEl.textContent = reverseMode ? card.a : card.q;
-  answerEl.textContent = reverseMode ? card.q : card.a;
+  renderRich(questionEl, reverseMode ? card.a : card.q);
+  renderRich(answerEl, reverseMode ? card.q : card.a);
   flagCheck.checked = !!card.flagged;
   progressText.textContent = `${pos + 1} / ${order.length}`;
   progressFill.style.width = `${((pos + 1) / order.length) * 100}%`;
@@ -865,6 +935,8 @@ const FAQ = [
    'Turn on \u201cReverse\u201d in the Study picker to see the answer first and guess the question instead.'],
   ['How does search work?',
    'The search box on the Study tab scans every card\u2019s question and answer across all decks, and studies the matches as a custom set.'],
+  ['Can I add colors, shapes, or formatting to cards?',
+   'Yes. Card text supports a small, safe formatting syntax: **bold** with double asterisks, *italic* with single asterisks, and line breaks. For color text use {{c:red|your text}} (a color name or #hex). To draw a filled shape use {{shape:circle|#4f46e5|120}} \u2014 the parts are shape, color, and size in pixels. Shapes include circle, square, rectangle, oval, triangle, diamond, pentagon, hexagon, star, and heart. Tip: the Auto-create \u201cColors\u201d and \u201cShapes\u201d decks are built with this syntax, so generate one to see examples.'],
   ['How do I share a deck with a contact?',
    'On the Study tab, swipe a deck to the left (or hover it on a computer) to reveal Share, then tap Share. On iPhone or Android the share sheet opens so you can send the deck as a file via AirDrop, Messages, email, and more. On a computer the deck downloads as a .json file that you can then attach and send.'],
   ['How do I add a deck that was shared with me?',

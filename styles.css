@@ -607,6 +607,13 @@ main {
   margin: auto 0;
   overflow-wrap: anywhere;
 }
+.card-shape {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 6px auto;
+  max-width: min(70vw, 260px);
+  height: auto;
+}
 
 .hint {
   text-align: center;
