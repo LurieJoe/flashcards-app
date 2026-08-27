@@ -11,7 +11,9 @@ friendly sea turtle whose flippers are flashcards.
 
 Three tabs — **Home**, **Study**, and **Import**:
 
-- **Home:** a short welcome plus an **Appearance** section (see Themes below).
+- **Home:** a short welcome and quick links to get started. Appearance settings
+  (theme, accent, font size, sound) live in **Settings** — the gear icon in the
+  top-left corner (see Themes below).
 - **Multiple decks:** create, rename, delete, and switch decks. Each imported file
   becomes its own deck. Cards are saved per-deck.
 - **Auto-create a deck (Import tab):** type a topic (e.g. *Animals*, *World Capitals*,
