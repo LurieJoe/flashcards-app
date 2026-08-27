@@ -138,10 +138,15 @@ const A_LABELS = /^(a|answers?|back|meanings?|descriptions?|(one[- ](word|senten
 // "Strong" answer labels — used on the first row of a table without needing the
 // question cell to also look like a header. Excludes the bare "a" to stay safe.
 const A_STRONG = /^(answers?|back|meanings?|descriptions?|(one[- ](word|sentence|line|phrase) )?definitions?)$/;
+// Definitional header answers (e.g. "One-sentence definition", "Definition", "Meaning").
+// Safe to treat as a header at ANY row position when the same value repeats — real
+// answers are unique sentences, never an identical definitional label.
+const A_DEFN = /^(meanings?|descriptions?|(one[- ](word|sentence|line|phrase) )?definitions?)$/;
 
 function isHeaderQuestionLabel(q) { return Q_LABELS.test(normLabel(q)); }
 function isHeaderAnswerLabel(a) { return A_LABELS.test(normLabel(a)); }
 function isStrongHeaderAnswer(a) { return A_STRONG.test(normLabel(a)); }
+function isDefnHeaderAnswer(a) { return A_DEFN.test(normLabel(a)); }
 
 // A pair that looks like a header on BOTH sides (position-independent, so safe to use
 // everywhere — text/JSON import and the existing-deck cleanup).
@@ -155,8 +160,14 @@ function cleanupHeaderCards() {
   let removed = 0;
   for (const d of state.decks) {
     if (!Array.isArray(d.cards)) continue;
+    const answerCount = {};
+    for (const c of d.cards) {
+      const k = normLabel(c.a);
+      answerCount[k] = (answerCount[k] || 0) + 1;
+    }
     const before = d.cards.length;
-    d.cards = d.cards.filter(c => !isHeaderPair(c));
+    d.cards = d.cards.filter(c =>
+      !(isHeaderPair(c) || (isDefnHeaderAnswer(c.a) && answerCount[normLabel(c.a)] >= 2)));
     removed += before - d.cards.length;
   }
   return removed;
@@ -301,13 +312,15 @@ function extractFromDocxXml(xml) {
   };
   walkBody(body);
 
-  // Structural header detection across tables: if two or more tables share the same
-  // first-row answer (e.g. every section starts with "One-sentence definition"), those
-  // first rows are almost certainly repeated column headers.
-  const firstAnswerCount = {};
+  // Structural header detection. Real answers are unique sentences; repeated column
+  // headers show up as the same answer value on several rows (e.g. every section starts
+  // with "One-sentence definition"). Count identical answers across the whole document.
+  const answerCount = {};
   for (const rows of tables) {
-    const key = normLabel(rows[0].a);
-    firstAnswerCount[key] = (firstAnswerCount[key] || 0) + 1;
+    for (const r of rows) {
+      const k = normLabel(r.a);
+      answerCount[k] = (answerCount[k] || 0) + 1;
+    }
   }
 
   const tableCards = [];
@@ -315,9 +328,9 @@ function extractFromDocxXml(xml) {
     rows.forEach((row, idx) => {
       const isFirst = idx === 0;
       const header =
-        isHeaderPair(row) ||                                   // both cells look like headers
-        (isFirst && isStrongHeaderAnswer(row.a)) ||            // first row, answer is a header label
-        (isFirst && tables.length >= 2 && firstAnswerCount[normLabel(row.a)] >= 2); // repeated across tables
+        isHeaderPair(row) ||                                              // both cells look like headers
+        (isFirst && isStrongHeaderAnswer(row.a)) ||                       // first row, answer is a header label
+        (isDefnHeaderAnswer(row.a) && answerCount[normLabel(row.a)] >= 2); // repeated definitional label, any row
       if (!header) tableCards.push(row);
     });
   }
