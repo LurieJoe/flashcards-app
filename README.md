@@ -1,9 +1,9 @@
-# Flashcard Flipper — installable iPhone app (PWA)
+# Flashcard Flipper — installable phone app (PWA) for iPhone & Android
 
-A self-contained flashcards app you install onto your iPhone/iPad **home screen** —
-no Mac, no Xcode, no signing, no expiring certificates. It works **fully offline**
-once installed and stores your cards on the device. Its mascot is **Flipper**, a
-friendly sea turtle whose flippers are flashcards.
+A self-contained flashcards app you install onto your iPhone, iPad, or Android
+**home screen** — no Mac, no Xcode, no signing, no expiring certificates, no Play
+Store. It works **fully offline** once installed and stores your cards on the device.
+Its mascot is **Flipper**, a friendly sea turtle whose flippers are flashcards.
 
 **Live app:** https://luriejoe.github.io/flashcards-app/
 
@@ -105,12 +105,16 @@ Word) and import that. Text-based PDFs can be opened, copied, and pasted into th
 tab. Scanned or image-only files (including image-only `.docx`) can't be imported without
 OCR first.
 
-## Get it onto your iPhone / iPad
+## Get it onto your phone (iPhone, iPad, or Android)
 
-A PWA installs from **Safari** over **HTTPS** (or `localhost`). The app is already
-hosted at **https://luriejoe.github.io/flashcards-app/** — just open that in Safari, tap
-**Share → Add to Home Screen → Add**, and launch it from the new icon. It then runs
-full-screen and offline.
+A PWA installs right from the browser over **HTTPS** (or `localhost`). The app is already
+hosted at **https://luriejoe.github.io/flashcards-app/** — open that link on your device
+and add it to your home screen:
+
+- **iPhone / iPad (Safari):** tap **Share → Add to Home Screen → Add**.
+- **Android (Chrome):** tap the **⋮** menu → **Install app** (or **Add to Home screen**) → **Install**.
+
+Launch it from the new icon; it runs full-screen and offline.
 
 If you want to host your own copy, pick one option:
 
@@ -119,8 +123,9 @@ If you want to host your own copy, pick one option:
 2. In the repo: **Settings → Pages → Build from a branch**, select your branch and the
    `/ (root)` folder, then Save.
 3. Wait ~1 minute; GitHub gives you an `https://<user>.github.io/<repo>/` URL.
-4. On your iPhone, open that URL in **Safari**.
-5. Tap the **Share** button → **Add to Home Screen** → **Add**.
+4. On your phone, open that URL — **Safari** on iOS, **Chrome** on Android.
+5. Add it to your home screen: iOS **Share → Add to Home Screen → Add**; Android
+   **⋮ → Install app / Add to Home screen → Install**.
 6. Launch it from the new home-screen icon. It now runs full-screen and offline.
 
 ### Option B — Free static host (Netlify / Vercel / Cloudflare Pages)
@@ -132,11 +137,11 @@ Run from this folder on your PC:
 ```powershell
 python -m http.server 8000
 ```
-Find your PC's IP (`ipconfig`), then on the iPhone open `http://<PC-IP>:8000/` in Safari
-and **Add to Home Screen**.
-Note: over plain `http://` on a LAN, the offline service worker won't register (iOS
-requires HTTPS off-localhost), but the app still works while the server is running.
-Use Option A or B for true offline use.
+Find your PC's IP (`ipconfig`), then on the phone open `http://<PC-IP>:8000/` (Safari on
+iOS, Chrome on Android) and add it to your home screen.
+Note: over plain `http://` on a LAN, the offline service worker won't register (iOS and
+Android both require HTTPS off-localhost), but the app still works while the server is
+running. Use Option A or B for true offline use.
 
 ## Updating
 The app is served with a versioned service worker cache. After you deploy changes, fully
