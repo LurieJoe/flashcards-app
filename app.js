@@ -128,12 +128,25 @@ function splitCsv(line) {
   return q && a ? { q, a } : null;
 }
 
+function normLabel(s) {
+  return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').replace(/[.:]+$/, '').trim();
+}
+// Question-side header labels (e.g. "Word or name", "Term", "Vocabulary", "Front").
+const Q_LABELS = /^(q|questions?|words?|word or .+|phrases?|terms?|vocabulary|vocab|front|prompts?|names?)$/;
+// Answer-side header labels (e.g. "One-sentence definition", "Definition", "Meaning").
+const A_LABELS = /^(a|answers?|back|meanings?|descriptions?|(one[- ](word|sentence|line|phrase) )?definitions?)$/;
+// "Strong" answer labels — used on the first row of a table without needing the
+// question cell to also look like a header. Excludes the bare "a" to stay safe.
+const A_STRONG = /^(answers?|back|meanings?|descriptions?|(one[- ](word|sentence|line|phrase) )?definitions?)$/;
+
+function isHeaderQuestionLabel(q) { return Q_LABELS.test(normLabel(q)); }
+function isHeaderAnswerLabel(a) { return A_LABELS.test(normLabel(a)); }
+function isStrongHeaderAnswer(a) { return A_STRONG.test(normLabel(a)); }
+
+// A pair that looks like a header on BOTH sides (position-independent, so safe to use
+// everywhere — text/JSON import and the existing-deck cleanup).
 function isHeaderPair(p) {
-  const norm = s => String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').replace(/[.:]+$/, '').trim();
-  const q = norm(p.q), a = norm(p.a);
-  const qh = /^(questions?|words?|word or phrase|phrases?|terms?|vocabulary|vocab|front|prompts?|q)$/.test(q);
-  const ah = /^(answers?|definitions?|one[- ]sentence definition|meanings?|descriptions?|back|a)$/.test(a);
-  return qh && ah;
+  return isHeaderQuestionLabel(p.q) && isHeaderAnswerLabel(p.a);
 }
 
 // Remove any column-header rows (e.g. "Word or phrase" | "One-sentence definition")
@@ -263,22 +276,23 @@ function extractFromDocxXml(xml) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
   if (doc.getElementsByTagName('parsererror').length) throw new Error('Could not read the document XML.');
   const body = doc.getElementsByTagName('w:body')[0] || doc.documentElement;
-  const tableCards = [];
+  const tables = [];   // one entry per table: array of {q,a} rows
   const lines = [];
 
   const walkBody = (parent) => {
     for (const node of Array.from(parent.childNodes)) {
       if (node.nodeType !== 1) continue;
       if (node.tagName === 'w:tbl') {
+        const rows = [];
         for (const row of Array.from(node.getElementsByTagName('w:tr'))) {
           const cells = Array.from(row.getElementsByTagName('w:tc'));
           if (cells.length >= 2) {
             const q = nodeText(cells[0]).replace(/\s+/g, ' ').trim();
             const a = nodeText(cells[1]).replace(/\s+/g, ' ').trim();
-            const pair = { q, a };
-            if (q && a && !isHeaderPair(pair)) tableCards.push(pair);
+            if (q && a) rows.push({ q, a });
           }
         }
+        if (rows.length) tables.push(rows);
       } else if (node.tagName === 'w:p') {
         const txt = nodeText(node).replace(/[ \t]+/g, ' ').trim();
         if (txt) lines.push(txt);
@@ -286,6 +300,27 @@ function extractFromDocxXml(xml) {
     }
   };
   walkBody(body);
+
+  // Structural header detection across tables: if two or more tables share the same
+  // first-row answer (e.g. every section starts with "One-sentence definition"), those
+  // first rows are almost certainly repeated column headers.
+  const firstAnswerCount = {};
+  for (const rows of tables) {
+    const key = normLabel(rows[0].a);
+    firstAnswerCount[key] = (firstAnswerCount[key] || 0) + 1;
+  }
+
+  const tableCards = [];
+  for (const rows of tables) {
+    rows.forEach((row, idx) => {
+      const isFirst = idx === 0;
+      const header =
+        isHeaderPair(row) ||                                   // both cells look like headers
+        (isFirst && isStrongHeaderAnswer(row.a)) ||            // first row, answer is a header label
+        (isFirst && tables.length >= 2 && firstAnswerCount[normLabel(row.a)] >= 2); // repeated across tables
+      if (!header) tableCards.push(row);
+    });
+  }
   return { tableCards, lines };
 }
 
