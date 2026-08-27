@@ -129,10 +129,24 @@ function splitCsv(line) {
 }
 
 function isHeaderPair(p) {
-  const q = p.q.toLowerCase(), a = p.a.toLowerCase();
-  const qh = /^(question|word|word or phrase|term|front|q)$/.test(q);
-  const ah = /^(answer|definition|one-sentence definition|meaning|back|a)$/.test(a);
+  const norm = s => String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').replace(/[.:]+$/, '').trim();
+  const q = norm(p.q), a = norm(p.a);
+  const qh = /^(questions?|words?|word or phrase|phrases?|terms?|vocabulary|vocab|front|prompts?|q)$/.test(q);
+  const ah = /^(answers?|definitions?|one[- ]sentence definition|meanings?|descriptions?|back|a)$/.test(a);
   return qh && ah;
+}
+
+// Remove any column-header rows (e.g. "Word or phrase" | "One-sentence definition")
+// that slipped into existing decks from older imports. Returns how many were removed.
+function cleanupHeaderCards() {
+  let removed = 0;
+  for (const d of state.decks) {
+    if (!Array.isArray(d.cards)) continue;
+    const before = d.cards.length;
+    d.cards = d.cards.filter(c => !isHeaderPair(c));
+    removed += before - d.cards.length;
+  }
+  return removed;
 }
 
 function cardsToText(cards) { return cards.map(c => `${c.q} | ${c.a}`).join('\n'); }
@@ -1160,6 +1174,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 /* ---------- Boot ---------- */
 load();
 ensureSamples();
+const _removedHeaders = cleanupHeaderCards();
 save();
 applyTheme();
 initPrefs();
@@ -1169,6 +1184,9 @@ renderDeckOptions();
 updateCount();
 showView('home');
 maybeShowInstallBanner();
+if (_removedHeaders) {
+  setTimeout(() => toast(`Removed ${_removedHeaders} column-header row${_removedHeaders > 1 ? 's' : ''} from your decks.`), 900);
+}
 
 if ('serviceWorker' in navigator) {
   // Reload once when a new service worker takes control, so updates apply immediately.
