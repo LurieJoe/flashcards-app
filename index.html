@@ -38,41 +38,57 @@
         <stop offset="0" style="stop-color:var(--primary-2)" />
         <stop offset="1" style="stop-color:var(--primary)" />
       </linearGradient>
+      <!-- Boxless swimming sea turtle; indigo body + white flashcard flippers (theme-safe). -->
       <symbol id="flipperMascot" viewBox="0 0 512 512">
-        <rect width="512" height="512" rx="120" fill="url(#flipperGrad)" />
-        <!-- back flipper (flashcard) -->
-        <g transform="translate(126,330) rotate(-36)">
-          <rect x="-28" y="-58" width="56" height="116" rx="15" fill="#e2e6fb" />
-          <rect x="-16" y="-38" width="34" height="7" rx="3.5" fill="#c4c8ef" />
-          <rect x="-16" y="-22" width="24" height="7" rx="3.5" fill="#c4c8ef" />
+        <!-- motion streaks -->
+        <g fill="none" stroke-linecap="round" stroke="#818cf8">
+          <path d="M40 300 q60 -14 118 -6" stroke-width="13" opacity=".55" />
+          <path d="M30 236 q64 -16 124 -8" stroke-width="11" opacity=".40" />
+          <path d="M60 360 q54 -10 104 -2" stroke-width="10" opacity=".30" />
         </g>
-        <!-- tail -->
-        <path d="M104 262 l-30 -6 6 30 z" fill="#cfd4f7" />
-        <!-- upper front flipper (flashcard) -->
-        <g transform="translate(320,206) rotate(30)">
-          <rect x="-30" y="-64" width="60" height="128" rx="16" fill="#eef0ff" />
-          <rect x="-18" y="-44" width="36" height="7" rx="3.5" fill="#c4c8ef" />
-          <rect x="-18" y="-28" width="26" height="7" rx="3.5" fill="#c4c8ef" />
+        <!-- bubbles -->
+        <g fill="#818cf8">
+          <circle cx="78" cy="150" r="11" opacity=".5" />
+          <circle cx="112" cy="112" r="7" opacity=".4" />
+          <circle cx="60" cy="98" r="6" opacity=".3" />
         </g>
-        <!-- shell -->
-        <ellipse cx="214" cy="256" rx="130" ry="100" transform="rotate(-11 214 256)" fill="#cfd4f7" />
-        <ellipse cx="206" cy="244" rx="112" ry="82" transform="rotate(-11 214 256)" fill="#e6e9fb" />
-        <path d="M150 168 q-2 90 8 168 M214 158 q0 96 2 176 M280 172 q6 84 -2 158" stroke="#b9bff0" stroke-width="5" fill="none" stroke-linecap="round" />
-        <path d="M104 236 q112 -34 226 4" stroke="#b9bff0" stroke-width="5" fill="none" stroke-linecap="round" />
-        <!-- neck -->
-        <path d="M312 250 q40 -8 66 -34 q22 20 6 44 q-30 24 -74 22 z" fill="#e6e9fb" />
-        <!-- big lower front flipper (flashcard) -->
-        <g transform="translate(292,354) rotate(44)">
-          <rect x="-34" y="-76" width="68" height="152" rx="18" fill="#f6f7fe" />
-          <rect x="-20" y="-54" width="44" height="8" rx="4" fill="#c4c8ef" />
-          <rect x="-20" y="-34" width="30" height="8" rx="4" fill="#c4c8ef" />
-          <rect x="-20" y="-14" width="38" height="8" rx="4" fill="#c4c8ef" />
+        <!-- turtle enlarged to fill (no box) -->
+        <g transform="translate(256 262) scale(1.28) translate(-256 -262)">
+          <g transform="rotate(-13 256 256) translate(6 4)">
+            <!-- back flipper (flashcard) -->
+            <g transform="translate(126,330) rotate(-52)">
+              <rect x="-26" y="-54" width="52" height="108" rx="14" fill="#ffffff" stroke="#c9cdf2" stroke-width="2" />
+              <rect x="-15" y="-36" width="32" height="7" rx="3.5" fill="#aeb4ea" />
+              <rect x="-15" y="-21" width="22" height="7" rx="3.5" fill="#aeb4ea" />
+            </g>
+            <!-- tail -->
+            <path d="M104 262 l-32 -6 6 32 z" fill="#4f46e5" />
+            <!-- upper front flipper (flashcard) -->
+            <g transform="translate(322,200) rotate(48)">
+              <rect x="-30" y="-64" width="60" height="128" rx="16" fill="#ffffff" stroke="#c9cdf2" stroke-width="2" />
+              <rect x="-18" y="-44" width="36" height="7" rx="3.5" fill="#aeb4ea" />
+              <rect x="-18" y="-28" width="26" height="7" rx="3.5" fill="#aeb4ea" />
+            </g>
+            <!-- shell -->
+            <ellipse cx="214" cy="256" rx="132" ry="102" transform="rotate(-11 214 256)" fill="url(#flipperGrad)" />
+            <ellipse cx="206" cy="244" rx="112" ry="82" transform="rotate(-11 214 256)" fill="#ffffff" opacity=".16" />
+            <path d="M150 168 q-2 90 8 168 M214 158 q0 96 2 176 M280 172 q6 84 -2 158" stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".5" />
+            <path d="M104 236 q112 -34 226 4" stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".5" />
+            <!-- neck -->
+            <path d="M312 250 q40 -8 66 -34 q22 20 6 44 q-30 24 -74 22 z" fill="#4f46e5" />
+            <!-- big lower front flipper (flashcard) -->
+            <g transform="translate(296,360) rotate(60)">
+              <rect x="-34" y="-76" width="68" height="152" rx="18" fill="#ffffff" stroke="#c9cdf2" stroke-width="2" />
+              <rect x="-20" y="-54" width="44" height="8" rx="4" fill="#aeb4ea" />
+              <rect x="-20" y="-34" width="30" height="8" rx="4" fill="#aeb4ea" />
+              <rect x="-20" y="-14" width="38" height="8" rx="4" fill="#aeb4ea" />
+            </g>
+            <!-- head -->
+            <ellipse cx="392" cy="196" rx="43" ry="38" transform="rotate(-18 392 196)" fill="url(#flipperGrad)" stroke="#ffffff" stroke-width="3" />
+            <circle cx="405" cy="188" r="8" fill="#ffffff" /><circle cx="405" cy="188" r="4" fill="#312e81" />
+            <path d="M404 214 q16 6 26 -4" stroke="#ffffff" stroke-width="6" fill="none" stroke-linecap="round" opacity=".9" />
+          </g>
         </g>
-        <!-- head -->
-        <ellipse cx="392" cy="196" rx="42" ry="37" transform="rotate(-18 392 196)" fill="#eef0ff" />
-        <circle cx="404" cy="186" r="7.5" fill="#3b3591" /><circle cx="407" cy="182" r="2.6" fill="#fff" />
-        <path d="M404 214 q16 6 26 -4" stroke="#3b3591" stroke-width="6" fill="none" stroke-linecap="round" />
-        <circle cx="374" cy="204" r="8" fill="#f9a8c9" opacity=".65" />
       </symbol>
     </defs>
   </svg>
