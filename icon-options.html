@@ -45,17 +45,20 @@
   <!-- C: Flipping Cards -->
   <symbol id="ico-cards" viewBox="0 0 512 512">
     <rect width="512" height="512" rx="120" fill="url(#g)"/>
-    <path d="M256 118 A 182 182 0 0 1 420 300" stroke="#ffb23e" stroke-width="16" fill="none" stroke-linecap="round"/>
-    <path d="M420 300 l-2 -34 26 20 z" fill="#ffb23e"/>
-    <path d="M256 482 A 182 182 0 0 1 92 300" stroke="#ffb23e" stroke-width="16" fill="none" stroke-linecap="round"/>
-    <path d="M92 300 l2 34 -26 -20 z" fill="#ffb23e"/>
-    <g transform="rotate(-13 256 300)"><rect x="156" y="188" width="200" height="224" rx="26" fill="#c9cef6"/></g>
-    <g transform="rotate(9 256 300)">
-      <rect x="156" y="188" width="200" height="224" rx="26" fill="#f6f7fe"/>
-      <rect x="188" y="236" width="140" height="16" rx="8" fill="#c4c8ef"/>
-      <rect x="188" y="272" width="104" height="16" rx="8" fill="#c4c8ef"/>
-      <rect x="188" y="308" width="124" height="16" rx="8" fill="#c4c8ef"/>
+    <!-- stacked cards, near-upright to read as a flip not a spin -->
+    <g transform="rotate(-5 256 300)"><rect x="166" y="196" width="196" height="220" rx="26" fill="#c9cef6"/></g>
+    <g transform="rotate(3 256 300)">
+      <rect x="150" y="180" width="196" height="220" rx="26" fill="#f6f7fe"/>
+      <rect x="182" y="226" width="132" height="15" rx="7.5" fill="#c4c8ef"/>
+      <rect x="182" y="260" width="98" height="15" rx="7.5" fill="#c4c8ef"/>
+      <rect x="182" y="294" width="116" height="15" rx="7.5" fill="#c4c8ef"/>
     </g>
+    <!-- TOP swirl: curls in from the left and sweeps over the top edge to the right -->
+    <path d="M150 150 q-24 4 -20 26 q4 20 26 18 q60 -34 150 -30" fill="none" stroke="#ffb23e" stroke-width="15" stroke-linecap="round"/>
+    <path d="M306 158 l30 6 -18 26 z" fill="#ffb23e"/>
+    <!-- BOTTOM swirl: curls in from the right and sweeps under the bottom edge to the left -->
+    <path d="M362 446 q24 -4 20 -26 q-4 -20 -26 -18 q-60 34 -150 30" fill="none" stroke="#ffb23e" stroke-width="15" stroke-linecap="round"/>
+    <path d="M206 438 l-30 -6 18 -26 z" fill="#ffb23e"/>
   </symbol>
 
   <!-- D: Smiley Card -->
@@ -77,24 +80,45 @@
   </symbol>
 
   <!-- E: Soft Flipper (friendlier origami bird) -->
-  <symbol id="ico-soft" viewBox="0 0 512 512">
+  <!-- F: Turtle (flashcards as flippers) -->
+  <symbol id="ico-turtle" viewBox="0 0 512 512">
     <rect width="512" height="512" rx="120" fill="url(#g)"/>
-    <g transform="rotate(31 256 270)">
-      <rect x="250" y="184" width="150" height="82" rx="18" fill="#d3d6f5"/>
-      <rect x="266" y="208" width="86" height="9" rx="4.5" fill="#c4c8ef"/>
-      <rect x="266" y="230" width="60" height="9" rx="4.5" fill="#c4c8ef"/>
+    <!-- tail -->
+    <path d="M244 372 h24 l-12 30 z" fill="#dfe2fb"/>
+    <!-- four flipper flashcards -->
+    <g transform="translate(150,236) rotate(-44)">
+      <rect x="-30" y="-48" width="60" height="96" rx="13" fill="#f6f7fe"/>
+      <rect x="-18" y="-30" width="38" height="7" rx="3.5" fill="#c4c8ef"/>
+      <rect x="-18" y="-14" width="26" height="7" rx="3.5" fill="#c4c8ef"/>
     </g>
-    <g transform="rotate(-31 256 270)">
-      <rect x="250" y="178" width="158" height="88" rx="18" fill="#f4f5fd"/>
-      <rect x="266" y="202" width="90" height="9" rx="4.5" fill="#c4c8ef"/>
-      <rect x="266" y="224" width="62" height="9" rx="4.5" fill="#c4c8ef"/>
+    <g transform="translate(362,236) rotate(44)">
+      <rect x="-30" y="-48" width="60" height="96" rx="13" fill="#f6f7fe"/>
+      <rect x="-18" y="-30" width="38" height="7" rx="3.5" fill="#c4c8ef"/>
+      <rect x="-18" y="-14" width="26" height="7" rx="3.5" fill="#c4c8ef"/>
     </g>
-    <!-- body: rounded teardrop tail -->
-    <path d="M228 300 Q256 306 286 312 Q266 380 246 408 Q232 372 228 300 Z" fill="#f4f5fd"/>
-    <!-- head: rounded leaf -->
-    <path d="M252 250 Q150 238 132 268 Q150 298 252 288 Z" fill="#f6f7fe"/>
-    <path d="M132 268 l-18 -6 6 18 z" fill="#ffb23e"/>
-    <circle cx="196" cy="268" r="11" fill="#3b3591"/><circle cx="200" cy="263" r="4" fill="#fff"/>
+    <g transform="translate(158,360) rotate(-134)">
+      <rect x="-28" y="-44" width="56" height="88" rx="12" fill="#eef0ff"/>
+      <rect x="-16" y="-26" width="34" height="7" rx="3.5" fill="#c4c8ef"/>
+      <rect x="-16" y="-12" width="24" height="7" rx="3.5" fill="#c4c8ef"/>
+    </g>
+    <g transform="translate(354,360) rotate(134)">
+      <rect x="-28" y="-44" width="56" height="88" rx="12" fill="#eef0ff"/>
+      <rect x="-16" y="-26" width="34" height="7" rx="3.5" fill="#c4c8ef"/>
+      <rect x="-16" y="-12" width="24" height="7" rx="3.5" fill="#c4c8ef"/>
+    </g>
+    <!-- shell -->
+    <ellipse cx="256" cy="292" rx="122" ry="116" fill="#dcdff9"/>
+    <ellipse cx="256" cy="292" rx="104" ry="98" fill="#eef0ff"/>
+    <!-- shell plates -->
+    <polygon points="256,252 292,272 292,312 256,332 220,312 220,272" fill="#e3e6fb" stroke="#b9bff0" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M256 252 V196 M292 272 L342 250 M292 312 L342 334 M256 332 V388 M220 312 L170 334 M220 272 L170 250" stroke="#b9bff0" stroke-width="6" stroke-linecap="round"/>
+    <!-- head -->
+    <circle cx="256" cy="152" r="40" fill="#eef0ff"/>
+    <circle cx="242" cy="148" r="6.5" fill="#3b3591"/><circle cx="245" cy="145" r="2.2" fill="#fff"/>
+    <circle cx="270" cy="148" r="6.5" fill="#3b3591"/><circle cx="273" cy="145" r="2.2" fill="#fff"/>
+    <path d="M244 166 q12 12 24 0" stroke="#3b3591" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="228" cy="160" r="8" fill="#f9a8c9" opacity=".7"/>
+    <circle cx="284" cy="160" r="8" fill="#f9a8c9" opacity=".7"/>
   </symbol>
 </defs></svg>
 
@@ -109,7 +133,7 @@
   <div class="card">
     <svg class="big"><use href="#ico-cards"/></svg>
     <h2>C · Flipping Cards</h2>
-    <div class="desc">No animal — two cards mid-flip with a circular arrow. Clean and literal to the app.</div>
+    <div class="desc">No animal — a card with top &amp; bottom swirls showing it flip over (not spin).</div>
     <div class="row"><svg class="small"><use href="#ico-cards"/></svg><svg class="tiny"><use href="#ico-cards"/></svg></div>
     <div class="lbl">app-icon sizes</div>
   </div>
@@ -121,10 +145,10 @@
     <div class="lbl">app-icon sizes</div>
   </div>
   <div class="card">
-    <svg class="big"><use href="#ico-soft"/></svg>
-    <h2>E · Soft Flipper</h2>
-    <div class="desc">A gentler take on today's origami bird — rounded head &amp; body, friendly eye, same wings.</div>
-    <div class="row"><svg class="small"><use href="#ico-soft"/></svg><svg class="tiny"><use href="#ico-soft"/></svg></div>
+    <svg class="big"><use href="#ico-turtle"/></svg>
+    <h2>F · Flipper the Turtle</h2>
+    <div class="desc">A friendly turtle whose four flippers are flashcards — a literal play on the name "Flipper."</div>
+    <div class="row"><svg class="small"><use href="#ico-turtle"/></svg><svg class="tiny"><use href="#ico-turtle"/></svg></div>
     <div class="lbl">app-icon sizes</div>
   </div>
 </div>
