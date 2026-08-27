@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'flashcards-v27';
+const CACHE = 'flashcards-v28';
 const ASSETS = [
   './',
   './index.html',

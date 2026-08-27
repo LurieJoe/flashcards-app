@@ -40,28 +40,39 @@
       </linearGradient>
       <symbol id="flipperMascot" viewBox="0 0 512 512">
         <rect width="512" height="512" rx="120" fill="url(#flipperGrad)" />
-        <g transform="rotate(34 250 264)">
-          <rect x="250" y="172" width="168" height="92" rx="12" fill="#d3d6f5" />
-          <path d="M388 172 h30 v30 z" fill="#d9dcf7" />
-          <rect x="266" y="198" width="92" height="10" rx="5" fill="#c4c8ef" />
-          <rect x="266" y="222" width="64" height="10" rx="5" fill="#c4c8ef" />
+        <!-- back flipper (flashcard) -->
+        <g transform="translate(126,330) rotate(-36)">
+          <rect x="-28" y="-58" width="56" height="116" rx="15" fill="#e2e6fb" />
+          <rect x="-16" y="-38" width="34" height="7" rx="3.5" fill="#c4c8ef" />
+          <rect x="-16" y="-22" width="24" height="7" rx="3.5" fill="#c4c8ef" />
         </g>
-        <g transform="rotate(-34 250 264)">
-          <rect x="250" y="164" width="176" height="100" rx="12" fill="#f4f5fd" />
-          <path d="M396 164 h30 v30 z" fill="#d9dcf7" />
-          <rect x="266" y="190" width="97" height="10" rx="5" fill="#c4c8ef" />
-          <rect x="266" y="214" width="67" height="10" rx="5" fill="#c4c8ef" />
+        <!-- tail -->
+        <path d="M104 262 l-30 -6 6 30 z" fill="#cfd4f7" />
+        <!-- upper front flipper (flashcard) -->
+        <g transform="translate(320,206) rotate(30)">
+          <rect x="-30" y="-64" width="60" height="128" rx="16" fill="#eef0ff" />
+          <rect x="-18" y="-44" width="36" height="7" rx="3.5" fill="#c4c8ef" />
+          <rect x="-18" y="-28" width="26" height="7" rx="3.5" fill="#c4c8ef" />
         </g>
-        <g transform="translate(-72,-85.5) scale(1.3)">
-          <polygon points="214,300 250,300 240,404" fill="#f4f5fd" />
-          <polygon points="250,300 290,312 240,404" fill="#d3d6f5" />
-          <polygon points="240,404 226,376 258,382" fill="#bcc0ef" />
+        <!-- shell -->
+        <ellipse cx="214" cy="256" rx="130" ry="100" transform="rotate(-11 214 256)" fill="#cfd4f7" />
+        <ellipse cx="206" cy="244" rx="112" ry="82" transform="rotate(-11 214 256)" fill="#e6e9fb" />
+        <path d="M150 168 q-2 90 8 168 M214 158 q0 96 2 176 M280 172 q6 84 -2 158" stroke="#b9bff0" stroke-width="5" fill="none" stroke-linecap="round" />
+        <path d="M104 236 q112 -34 226 4" stroke="#b9bff0" stroke-width="5" fill="none" stroke-linecap="round" />
+        <!-- neck -->
+        <path d="M312 250 q40 -8 66 -34 q22 20 6 44 q-30 24 -74 22 z" fill="#e6e9fb" />
+        <!-- big lower front flipper (flashcard) -->
+        <g transform="translate(292,354) rotate(44)">
+          <rect x="-34" y="-76" width="68" height="152" rx="18" fill="#f6f7fe" />
+          <rect x="-20" y="-54" width="44" height="8" rx="4" fill="#c4c8ef" />
+          <rect x="-20" y="-34" width="30" height="8" rx="4" fill="#c4c8ef" />
+          <rect x="-20" y="-14" width="38" height="8" rx="4" fill="#c4c8ef" />
         </g>
-        <g transform="translate(-72,-85.5) scale(1.3)">
-          <polygon points="250,258 122,248 214,300" fill="#f4f5fd" />
-          <polygon points="122,248 92,242 124,268" fill="#d3d6f5" />
-          <circle cx="174" cy="262" r="7" fill="#3b3591" />
-        </g>
+        <!-- head -->
+        <ellipse cx="392" cy="196" rx="42" ry="37" transform="rotate(-18 392 196)" fill="#eef0ff" />
+        <circle cx="404" cy="186" r="7.5" fill="#3b3591" /><circle cx="407" cy="182" r="2.6" fill="#fff" />
+        <path d="M404 214 q16 6 26 -4" stroke="#3b3591" stroke-width="6" fill="none" stroke-linecap="round" />
+        <circle cx="374" cy="204" r="8" fill="#f9a8c9" opacity=".65" />
       </symbol>
     </defs>
   </svg>
@@ -80,7 +91,7 @@
     <section id="home-view" class="view active">
       <div class="welcome">
         <div class="welcome-icon" aria-hidden="true">
-          <svg class="welcome-flipper" role="img" aria-label="Flipper the origami bird">
+          <svg class="welcome-flipper" role="img" aria-label="Flipper the turtle">
             <use href="#flipperMascot" />
           </svg>
         </div>

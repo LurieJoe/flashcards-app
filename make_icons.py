@@ -1,70 +1,80 @@
-"""Generate PWA icons for the Flashcards app."""
-from PIL import Image, ImageDraw
+"""Generate the PWA / home-screen icons for Flashcard Flipper.
+
+The app icon is the "Flipping Cards" logo (a flashcard with amber flip
+swirls). The artwork is defined as SVG in icons/src/*.html so it stays crisp
+and editable; this script renders those to PNG with a headless Chromium
+(Edge or Chrome) and then downsizes with Pillow.
+
+    python make_icons.py
+
+Outputs (into icons/): icon-180.png, icon-192.png, icon-512.png,
+icon-maskable-512.png. The in-app turtle mascot lives separately as an inline
+SVG sprite in index.html (#flipperMascot) and is not produced here.
+"""
 import os
+import shutil
+import subprocess
+import tempfile
 
-OUT = os.path.join(os.path.dirname(__file__), "icons")
-os.makedirs(OUT, exist_ok=True)
+from PIL import Image
 
-BG = (79, 70, 229)      # indigo
-BG2 = (99, 102, 241)
-CARD = (255, 255, 255)
-ACCENT = (241, 245, 249)
+HERE = os.path.dirname(__file__)
+SRC = os.path.join(HERE, "icons", "src")
+OUT = os.path.join(HERE, "icons")
 
-
-def lerp(a, b, t):
-    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
-
-
-def make_icon(size, maskable=False):
-    img = Image.new("RGB", (size, size), BG)
-    draw = ImageDraw.Draw(img)
-
-    # Vertical gradient background
-    for y in range(size):
-        draw.line([(0, y), (size, y)], fill=lerp(BG, BG2, y / size))
-
-    # For maskable, keep content within safe area (~80%)
-    inset = size * (0.20 if maskable else 0.14)
-    x0, y0 = inset, inset
-    x1, y1 = size - inset, size - inset
-    r = size * 0.06
-
-    # Back card (offset, translucent-looking)
-    off = size * 0.045
-    back = ACCENT
-    draw.rounded_rectangle(
-        [x0 + off, y0 + off, x1 + off, y1 + off], radius=r,
-        fill=lerp(BG2, CARD, 0.55))
-
-    # Front card
-    draw.rounded_rectangle([x0, y0, x1, y1], radius=r, fill=CARD)
-
-    # "Q" and "A" text lines to suggest a flashcard
-    line_h = size * 0.05
-    lx0 = x0 + size * 0.12
-    lx1 = x1 - size * 0.12
-    ys = y0 + (y1 - y0) * 0.30
-    for i, w in enumerate([1.0, 0.75, 0.55]):
-        yy = ys + i * line_h * 2.2
-        draw.rounded_rectangle(
-            [lx0, yy, lx0 + (lx1 - lx0) * w, yy + line_h],
-            radius=line_h / 2,
-            fill=lerp(CARD, BG, 0.18 if i == 0 else 0.10))
-
-    # Divider + accent dot
-    dv = y0 + (y1 - y0) * 0.62
-    draw.line([(lx0, dv), (lx1, dv)], fill=lerp(CARD, BG, 0.12), width=max(2, size // 128))
-    dot_r = size * 0.055
-    cx, cy = x1 - size * 0.16, y1 - size * 0.16
-    draw.ellipse([cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r], fill=BG)
-
-    return img
+STANDARD = os.path.join(SRC, "c-icon.html")
+MASKABLE = os.path.join(SRC, "c-icon-maskable.html")
 
 
-for size in (180, 192, 512):
-    make_icon(size).save(os.path.join(OUT, f"icon-{size}.png"))
+def find_browser():
+    """Locate a headless-capable Chromium binary (Edge or Chrome)."""
+    candidates = [
+        shutil.which("msedge"),
+        shutil.which("chrome"),
+        shutil.which("google-chrome"),
+        shutil.which("chromium"),
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium-browser",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    raise RuntimeError("No Edge/Chrome found to render icon SVGs.")
 
-make_icon(512, maskable=True).save(os.path.join(OUT, "icon-maskable-512.png"))
 
-print("Icons written to", OUT)
-print(os.listdir(OUT))
+def render(browser, html_path, png_path, size=512):
+    url = "file:///" + os.path.abspath(html_path).replace("\\", "/")
+    subprocess.run([
+        browser, "--headless", "--disable-gpu", "--hide-scrollbars",
+        "--force-device-scale-factor=1", f"--window-size={size},{size}",
+        f"--screenshot={png_path}", url,
+    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def main():
+    os.makedirs(OUT, exist_ok=True)
+    browser = find_browser()
+    tmp = tempfile.mkdtemp(prefix="fc_icons_")
+
+    std = os.path.join(tmp, "std.png")
+    msk = os.path.join(tmp, "msk.png")
+    render(browser, STANDARD, std)
+    render(browser, MASKABLE, msk)
+
+    base = Image.open(std).convert("RGB")
+    base.save(os.path.join(OUT, "icon-512.png"))
+    base.resize((192, 192), Image.LANCZOS).save(os.path.join(OUT, "icon-192.png"))
+    base.resize((180, 180), Image.LANCZOS).save(os.path.join(OUT, "icon-180.png"))
+    Image.open(msk).convert("RGB").save(os.path.join(OUT, "icon-maskable-512.png"))
+
+    shutil.rmtree(tmp, ignore_errors=True)
+    print("Icons written to", OUT)
+    print(sorted(os.listdir(OUT)))
+
+
+if __name__ == "__main__":
+    main()
