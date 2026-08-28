@@ -102,6 +102,7 @@
   </svg>
   <header class="app-header">
     <button id="settings-btn" class="gear-btn" aria-label="Settings" title="Settings">⚙</button>
+    <button id="tips-btn" class="bulb-btn" aria-label="Tips" title="Tips">💡</button>
     <button id="profile-btn" class="avatar-btn" aria-label="Profiles" title="Profiles">?</button>
     <h1>Flashcard Flipper</h1>
     <nav class="tabs">
@@ -127,11 +128,13 @@
           <button class="btn primary" data-goto="study">Study a deck</button>
           <button class="btn" data-goto="edit">Import or create</button>
         </div>
-        <p class="home-tip">Tip: on the <strong>Import</strong> tab you can load a
-           <code>.docx</code>, <code>.csv</code>, or <code>.json</code> file, or just
-           type <code>question | answer</code> lines.</p>
-        <p class="home-tip">Adjust the theme, font size, sound, and more from the
-           <strong>⚙ Settings</strong> icon in the top-left corner.</p>
+        <div class="home-tips-controls">
+          <button id="home-tips-btn" class="btn tips-open-btn">💡 View tips</button>
+          <label class="toggle-row tips-startup-row">
+            <input type="checkbox" class="tips-startup-check" />
+            <span>Show tips at startup</span>
+          </label>
+        </div>
       </div>
     </section>
 
@@ -322,6 +325,14 @@
           <input type="checkbox" id="pref-timer" />
           <span>Show a timer while studying</span>
         </label>
+        <label class="toggle-row">
+          <input type="checkbox" class="tips-startup-check" />
+          <span>Show tips at startup</span>
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="pref-tips-navigate" />
+          <span>Show tips as you navigate</span>
+        </label>
         <div class="setting">
           <span class="setting-label">Font size</span>
           <div id="font-size" class="segmented" role="group" aria-label="Font size">
@@ -372,6 +383,21 @@
       <button id="add-profile-btn" class="btn">+ Add profile</button>
       <p class="modal-note">Each profile keeps its own decks, theme, font size, and
         settings — all on this device. No accounts, no passwords, nothing leaves your phone.</p>
+    </div>
+  </div>
+
+  <div id="tips-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Tips">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span class="modal-bulb" aria-hidden="true">💡</span>
+        <h2>Tips</h2>
+        <button id="tips-close" class="modal-x" aria-label="Close">&times;</button>
+      </div>
+      <ul id="tips-list" class="tips-list"></ul>
+      <label class="toggle-row tips-startup-row">
+        <input type="checkbox" class="tips-startup-check" />
+        <span>Show these tips at startup</span>
+      </label>
     </div>
   </div>
 

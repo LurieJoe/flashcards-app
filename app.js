@@ -462,6 +462,7 @@ function showView(name) {
     document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
     updateCount();
   }
+  maybeNavTip(name);
 }
 
 tabs.forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
@@ -952,6 +953,8 @@ const PREF = {
   get sound() { return K('pref.sound'); },
   get timer() { return K('pref.timer'); },
   get font() { return K('pref.font'); },
+  get tipsStartup() { return K('pref.tipsStartup'); },
+  get tipsNavigate() { return K('pref.tipsNavigate'); },
 };
 function prefBool(key, def) { const v = localStorage.getItem(key); return v === null ? def : v === '1'; }
 
@@ -1051,6 +1054,119 @@ function initPrefs() {
   document.querySelectorAll('#font-size .seg').forEach(b =>
     b.addEventListener('click', () => { localStorage.setItem(PREF.font, b.dataset.font); applyFont(); }));
   applyFont();
+}
+
+/* ============================================================
+   Tips: lightbulb popup + startup + navigate toasts
+============================================================ */
+const TIPS = [
+  { ico: '👥', view: 'home',
+    title: 'Switch between profiles',
+    text: 'Tap the colored circle in the top-right to add a profile or switch users. Each profile keeps its own decks, theme, and font size — perfect for sharing one device.' },
+  { ico: '📄', view: 'edit',
+    title: 'Import a file to create a deck',
+    text: 'On the Import tab, tap “Import file…” to load a Word .docx, a .csv/.txt list, or a .json deck. Each file becomes its own deck.' },
+  { ico: '👆', view: 'study',
+    title: 'Tap a card to reveal the answer',
+    text: 'While studying, tap the card to flip it and show the answer. Tap again to flip back to the question.' },
+  { ico: '👉', view: 'study',
+    title: 'Swipe to move between cards',
+    text: 'Swipe left for the next card and swipe right for the previous one. On a computer, use the ← and → arrow keys.' },
+  { ico: '🚩', view: 'study',
+    title: 'Flag tricky cards, then drill them',
+    text: 'Tick “Flag this card for review” while studying. Back on the Study picker, turn on “Only study flagged cards” to run just those.' },
+  { ico: '🔄', view: 'study',
+    title: 'Reverse mode',
+    text: 'In the Study picker, turn on “Reverse” to see the answer first and guess the question instead.' },
+  { ico: '🔍', view: 'study',
+    title: 'Study across decks',
+    text: 'Check multiple decks to study them together, or use the search box to study every matching card from all your decks at once.' },
+  { ico: '📝', view: 'edit',
+    title: 'Bulleted answers',
+    text: 'Separate answer items with a semicolon to show them as a bulleted list — e.g. “Name a primary color | Red; Blue; Yellow”.' },
+  { ico: '🎨', view: 'home',
+    title: 'Make it yours',
+    text: 'Open ⚙ Settings to change the theme, accent color, font size, and sound — each profile has its own.' },
+];
+
+function renderTips() {
+  const ul = document.getElementById('tips-list');
+  if (!ul) return;
+  ul.innerHTML = '';
+  for (const t of TIPS) {
+    const li = document.createElement('li');
+    li.className = 'tip-item';
+    li.innerHTML =
+      '<span class="tip-ico" aria-hidden="true">' + t.ico + '</span>' +
+      '<div class="tip-body">' +
+        '<p class="tip-title">' + escapeHtml(t.title) + '</p>' +
+        '<p class="tip-text">' + escapeHtml(t.text) + '</p>' +
+      '</div>';
+    ul.appendChild(li);
+  }
+}
+
+function openTips() { document.getElementById('tips-modal').classList.remove('hidden'); }
+function closeTips() { document.getElementById('tips-modal').classList.add('hidden'); }
+
+function syncTipsStartupChecks() {
+  const on = prefBool(PREF.tipsStartup, true);
+  document.querySelectorAll('.tips-startup-check').forEach(c => { c.checked = on; });
+}
+function setTipsStartup(on) {
+  localStorage.setItem(PREF.tipsStartup, on ? '1' : '0');
+  syncTipsStartupChecks();
+}
+
+/* Contextual toast shown while navigating, if enabled */
+let tipToastEl = null, tipToastTimer = null;
+const navTipShown = new Set();
+function hideTipToast() {
+  if (!tipToastEl) return;
+  tipToastEl.classList.remove('show');
+  if (tipToastTimer) { clearTimeout(tipToastTimer); tipToastTimer = null; }
+}
+function showTipToast(tip) {
+  if (!tipToastEl) {
+    tipToastEl = document.createElement('div');
+    tipToastEl.className = 'tip-toast';
+    tipToastEl.setAttribute('role', 'status');
+    document.body.appendChild(tipToastEl);
+  }
+  tipToastEl.innerHTML =
+    '<span class="tip-ico" aria-hidden="true">' + tip.ico + '</span>' +
+    '<span class="tip-toast-text">' + escapeHtml(tip.text) + '</span>' +
+    '<button class="tip-toast-x" aria-label="Dismiss tip">&times;</button>';
+  tipToastEl.querySelector('.tip-toast-x').addEventListener('click', hideTipToast);
+  setTimeout(() => { if (tipToastEl) tipToastEl.classList.add('show'); }, 20);
+  if (tipToastTimer) clearTimeout(tipToastTimer);
+  tipToastTimer = setTimeout(hideTipToast, 6000);
+}
+function maybeNavTip(view) {
+  if (!prefBool(PREF.tipsNavigate, false)) return;
+  if (navTipShown.has(view)) return;
+  const pool = TIPS.filter(t => t.view === view);
+  if (!pool.length) return;
+  navTipShown.add(view);
+  showTipToast(pool[Math.floor(Math.random() * pool.length)]);
+}
+
+function initTips() {
+  renderTips();
+  syncTipsStartupChecks();
+  document.getElementById('tips-btn').addEventListener('click', openTips);
+  document.getElementById('home-tips-btn').addEventListener('click', openTips);
+  document.getElementById('tips-close').addEventListener('click', closeTips);
+  const modal = document.getElementById('tips-modal');
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeTips(); });
+  document.querySelectorAll('.tips-startup-check').forEach(c =>
+    c.addEventListener('change', () => setTipsStartup(c.checked)));
+  const nav = document.getElementById('pref-tips-navigate');
+  nav.checked = prefBool(PREF.tipsNavigate, false);
+  nav.addEventListener('change', () => {
+    localStorage.setItem(PREF.tipsNavigate, nav.checked ? '1' : '0');
+    if (!nav.checked) hideTipToast();
+  });
 }
 
 /* ============================================================
@@ -1413,11 +1529,13 @@ save();
 applyTheme();
 initPrefs();
 initProfiles();
+initTips();
 renderFaq();
 renderPrivacy();
 renderDeckOptions();
 updateCount();
 showView('home');
+if (prefBool(PREF.tipsStartup, true)) openTips();
 maybeShowInstallBanner();
 if (_removedHeaders) {
   setTimeout(() => toast(`Removed ${_removedHeaders} column-header row${_removedHeaders > 1 ? 's' : ''} from your decks.`), 900);

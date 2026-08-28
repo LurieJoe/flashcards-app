@@ -38,6 +38,11 @@ Three tabs — **Home**, **Study**, and **Import**:
   font size, and color theme** — perfect for a shared iPad where each kid gets their
   own space. Profiles are **stored on-device only**: no accounts, no passwords, no sync.
   Your existing cards automatically become the first profile ("Me").
+- **Tips (💡):** tap the **lightbulb** next to the ⚙ gear for a quick set of tips —
+  how to switch profiles, import a deck, flag and drill cards, tap to flip, and swipe
+  between cards. Toggle **Show tips at startup** (on the Home screen or in Settings) to
+  see them each time you open the app, and **Show tips as you navigate** for short,
+  in-context reminders as you move around.
 - **Import / create (Import tab):** tap **Import file…** to load cards from:
   - **`.docx`** (Word) — auto-detects 2-column tables, `question | answer` lines,
     `Q:`/`A:` labels, or alternating lines. Parsed fully offline on-device.
