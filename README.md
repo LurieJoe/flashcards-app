@@ -33,6 +33,11 @@ Three tabs — **Home**, **Study**, and **Import**:
   renders three bullet points. Works on either side of the card and still supports the
   rich syntax above per item. Need a literal semicolon (grammar/punctuation cards)?
   Escape it as `\;`.
+- **Profiles (local, no login):** tap the round **avatar in the top-right** to switch
+  between profiles or add a new one. Each profile keeps its **own decks, appearance,
+  font size, and color theme** — perfect for a shared iPad where each kid gets their
+  own space. Profiles are **stored on-device only**: no accounts, no passwords, no sync.
+  Your existing cards automatically become the first profile ("Me").
 - **Import / create (Import tab):** tap **Import file…** to load cards from:
   - **`.docx`** (Word) — auto-detects 2-column tables, `question | answer` lines,
     `Q:`/`A:` labels, or alternating lines. Parsed fully offline on-device.

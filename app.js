@@ -8,9 +8,7 @@
    }
    Legacy v1 (single list under flashcards.cards.v1) is migrated.
 ============================================================ */
-const STORE_KEY = 'flashcards.data.v2';
 const LEGACY_KEY = 'flashcards.cards.v1';
-const SAMPLES_FLAG = 'flashcards.samplesSeeded';
 
 // Built-in sample decks, seeded once so new (and existing) users have something to try.
 const SAMPLE_DECKS = [
@@ -47,9 +45,62 @@ let pos = 0;
 /* ---------- Persistence ---------- */
 function uid() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
+/* ---------- Profiles (local, no login) ----------
+   Each profile namespaces its own storage under flashcards.p.<id>.<suffix>, so a
+   parent can hand the iPad to different kids and each keeps their own decks, theme,
+   font size, and settings — all on-device. A registry lists profiles + the active
+   one. Legacy (pre-profile) data is migrated into a default profile on first run. */
+const PROFILES_KEY = 'flashcards.profiles.v1';
+const PROFILE_SUFFIXES = ['data.v2', 'pref.sound', 'pref.timer', 'pref.font', 'theme', 'accent', 'samplesSeeded'];
+const LEGACY_GLOBAL = {
+  'data.v2': 'flashcards.data.v2',
+  'pref.sound': 'flashcards.pref.sound',
+  'pref.timer': 'flashcards.pref.timer',
+  'pref.font': 'flashcards.pref.font',
+  'theme': 'flashcards.theme',
+  'accent': 'flashcards.accent',
+  'samplesSeeded': 'flashcards.samplesSeeded',
+};
+const PROFILE_COLORS = ['#6366f1', '#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#a855f7', '#14b8a6'];
+
+let profiles = { profiles: [], activeId: null };
+
+function profileKey(pid, suffix) { return 'flashcards.p.' + pid + '.' + suffix; }
+function K(suffix) { return profileKey(profiles.activeId, suffix); }
+function saveProfiles() { localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles)); }
+
+function loadProfiles() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem(PROFILES_KEY)); } catch { p = null; }
+  if (p && Array.isArray(p.profiles) && p.profiles.length) {
+    profiles = p;
+  } else {
+    // First run with profiles: create a default and migrate any legacy data into it.
+    const pid = uid();
+    profiles = { profiles: [{ id: pid, name: 'Me', color: PROFILE_COLORS[0] }], activeId: pid };
+    for (const suf of PROFILE_SUFFIXES) {
+      const legacy = localStorage.getItem(LEGACY_GLOBAL[suf]);
+      if (legacy !== null) {
+        localStorage.setItem(profileKey(pid, suf), legacy);
+        localStorage.removeItem(LEGACY_GLOBAL[suf]);
+      }
+    }
+    saveProfiles();
+  }
+  if (!profiles.profiles.some(pr => pr.id === profiles.activeId)) {
+    profiles.activeId = profiles.profiles[0].id;
+  }
+}
+function activeProfile() { return profiles.profiles.find(p => p.id === profiles.activeId) || profiles.profiles[0]; }
+function nextProfileColor() {
+  const used = new Set(profiles.profiles.map(p => p.color));
+  return PROFILE_COLORS.find(c => !used.has(c)) || PROFILE_COLORS[profiles.profiles.length % PROFILE_COLORS.length];
+}
+function deleteProfileData(pid) { PROFILE_SUFFIXES.forEach(s => localStorage.removeItem(profileKey(pid, s))); }
+
 function load() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(K('data.v2'));
     if (raw) {
       state = JSON.parse(raw);
     } else {
@@ -70,19 +121,19 @@ function load() {
   if (!state.decks.some(d => d.id === state.activeId)) state.activeId = state.decks[0].id;
 }
 
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function save() { localStorage.setItem(K('data.v2'), JSON.stringify(state)); }
 function activeDeck() { return state.decks.find(d => d.id === state.activeId) || state.decks[0]; }
 
 // Seed the built-in sample decks a single time (skips any that already exist by name).
 function ensureSamples() {
-  if (localStorage.getItem(SAMPLES_FLAG) === '1') return;
+  if (localStorage.getItem(K('samplesSeeded')) === '1') return;
   const existing = new Set(state.decks.map(d => d.name.toLowerCase()));
   for (const s of SAMPLE_DECKS) {
     if (!existing.has(s.name.toLowerCase())) {
       state.decks.push({ id: uid(), name: s.name, cards: s.cards.map(c => ({ q: c.q, a: c.a })) });
     }
   }
-  localStorage.setItem(SAMPLES_FLAG, '1');
+  localStorage.setItem(K('samplesSeeded'), '1');
 }
 
 function uniqueName(base) {
@@ -898,9 +949,9 @@ document.addEventListener('keydown', e => {
    Preferences: sound, timer, font size
 ============================================================ */
 const PREF = {
-  sound: 'flashcards.pref.sound',
-  timer: 'flashcards.pref.timer',
-  font: 'flashcards.pref.font',
+  get sound() { return K('pref.sound'); },
+  get timer() { return K('pref.timer'); },
+  get font() { return K('pref.font'); },
 };
 function prefBool(key, def) { const v = localStorage.getItem(key); return v === null ? def : v === '1'; }
 
@@ -1213,11 +1264,8 @@ document.getElementById('install-dismiss').addEventListener('click', () => {
 });
 
 /* ---------- Theme (mode + accent) ---------- */
-const THEME_KEY = 'flashcards.theme';
-const ACCENT_KEY = 'flashcards.accent';
-
-function getTheme() { return localStorage.getItem(THEME_KEY) || 'system'; }
-function getAccent() { return localStorage.getItem(ACCENT_KEY) || 'indigo'; }
+function getTheme() { return localStorage.getItem(K('theme')) || 'system'; }
+function getAccent() { return localStorage.getItem(K('accent')) || 'indigo'; }
 
 function applyTheme() {
   const mode = getTheme();
@@ -1237,22 +1285,134 @@ function applyTheme() {
 }
 
 document.querySelectorAll('#theme-mode .seg').forEach(b =>
-  b.addEventListener('click', () => { localStorage.setItem(THEME_KEY, b.dataset.mode); applyTheme(); }));
+  b.addEventListener('click', () => { localStorage.setItem(K('theme'), b.dataset.mode); applyTheme(); }));
 document.querySelectorAll('#accent-swatches .swatch').forEach(b =>
-  b.addEventListener('click', () => { localStorage.setItem(ACCENT_KEY, b.dataset.accent); applyTheme(); }));
+  b.addEventListener('click', () => { localStorage.setItem(K('accent'), b.dataset.accent); applyTheme(); }));
 
 // React to OS light/dark changes while on "System".
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   if (getTheme() === 'system') applyTheme();
 });
 
+/* ---------- Profiles UI ---------- */
+function profileInitial(p) { return ((p.name || '').trim()[0] || '?').toUpperCase(); }
+
+function renderProfileButton() {
+  const p = activeProfile();
+  const btn = document.getElementById('profile-btn');
+  if (!btn || !p) return;
+  btn.style.background = p.color;
+  btn.textContent = profileInitial(p);
+  btn.setAttribute('title', 'Profile: ' + p.name);
+  btn.setAttribute('aria-label', 'Profile: ' + p.name + '. Tap to switch profiles.');
+}
+
+function renderProfileList() {
+  const ul = document.getElementById('profile-list');
+  if (!ul) return;
+  const canDelete = profiles.profiles.length > 1;
+  ul.innerHTML = '';
+  for (const p of profiles.profiles) {
+    const li = document.createElement('li');
+    li.className = 'profile-row' + (p.id === profiles.activeId ? ' active' : '');
+    li.innerHTML =
+      '<button class="profile-pick" data-id="' + p.id + '">' +
+        '<span class="avatar" style="background:' + p.color + '">' + escapeHtml(profileInitial(p)) + '</span>' +
+        '<span class="pname">' + escapeHtml(p.name) + '</span>' +
+        (p.id === profiles.activeId ? '<span class="active-check" aria-label="Active">\u2713</span>' : '') +
+      '</button>' +
+      '<button class="row-act color" data-id="' + p.id + '" style="color:' + p.color + '" title="Change color" aria-label="Change color">\u25CF</button>' +
+      '<button class="row-act rename" data-id="' + p.id + '" title="Rename" aria-label="Rename">\u270E</button>' +
+      (canDelete ? '<button class="row-act delete" data-id="' + p.id + '" title="Delete" aria-label="Delete">\u2715</button>' : '');
+    ul.appendChild(li);
+  }
+}
+
+function openProfiles() { renderProfileList(); document.getElementById('profiles-modal').classList.remove('hidden'); }
+function closeProfiles() { document.getElementById('profiles-modal').classList.add('hidden'); }
+
+function switchProfile(pid) {
+  if (pid === profiles.activeId) { closeProfiles(); return; }
+  profiles.activeId = pid;
+  saveProfiles();
+  location.reload(); // clean reload so the pre-paint theme + decks load for the new profile
+}
+
+function addProfile() {
+  const name = prompt('Name for the new profile:');
+  if (!name || !name.trim()) return;
+  const pid = uid();
+  profiles.profiles.push({ id: pid, name: name.trim().slice(0, 24), color: nextProfileColor() });
+  profiles.activeId = pid;
+  saveProfiles();
+  location.reload();
+}
+
+function renameProfile(pid) {
+  const p = profiles.profiles.find(x => x.id === pid);
+  if (!p) return;
+  const name = prompt('Rename profile:', p.name);
+  if (!name || !name.trim()) return;
+  p.name = name.trim().slice(0, 24);
+  saveProfiles();
+  renderProfileList();
+  renderProfileButton();
+}
+
+function cycleProfileColor(pid) {
+  const p = profiles.profiles.find(x => x.id === pid);
+  if (!p) return;
+  const i = PROFILE_COLORS.indexOf(p.color);
+  p.color = PROFILE_COLORS[(i + 1) % PROFILE_COLORS.length];
+  saveProfiles();
+  renderProfileList();
+  if (pid === profiles.activeId) renderProfileButton();
+}
+
+function deleteProfile(pid) {
+  if (profiles.profiles.length <= 1) return;
+  const p = profiles.profiles.find(x => x.id === pid);
+  if (!p) return;
+  if (!confirm('Delete profile \u201c' + p.name + '\u201d and all of its decks on this device? This cannot be undone.')) return;
+  profiles.profiles = profiles.profiles.filter(x => x.id !== pid);
+  deleteProfileData(pid);
+  if (profiles.activeId === pid) {
+    profiles.activeId = profiles.profiles[0].id;
+    saveProfiles();
+    location.reload();
+    return;
+  }
+  saveProfiles();
+  renderProfileList();
+}
+
+function initProfiles() {
+  renderProfileButton();
+  document.getElementById('profile-btn').addEventListener('click', openProfiles);
+  document.getElementById('profiles-close').addEventListener('click', closeProfiles);
+  document.getElementById('add-profile-btn').addEventListener('click', addProfile);
+  const modal = document.getElementById('profiles-modal');
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeProfiles(); });
+  document.getElementById('profile-list').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const id = b.dataset.id;
+    if (b.classList.contains('profile-pick')) switchProfile(id);
+    else if (b.classList.contains('color')) cycleProfileColor(id);
+    else if (b.classList.contains('rename')) renameProfile(id);
+    else if (b.classList.contains('delete')) deleteProfile(id);
+  });
+}
+
 /* ---------- Boot ---------- */
+loadProfiles();
 load();
 ensureSamples();
 const _removedHeaders = cleanupHeaderCards();
 save();
 applyTheme();
 initPrefs();
+initProfiles();
 renderFaq();
 renderPrivacy();
 renderDeckOptions();

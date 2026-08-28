@@ -17,11 +17,19 @@
 
   <link rel="stylesheet" href="styles.css" />
   <script>
-    // Apply saved theme/accent before first paint to avoid a flash.
+    // Apply saved theme/accent before first paint to avoid a flash (per active profile).
     (function () {
       try {
-        var t = localStorage.getItem('flashcards.theme') || 'system';
-        var a = localStorage.getItem('flashcards.accent') || 'indigo';
+        var t = 'system', a = 'indigo', pid = null;
+        var pj = localStorage.getItem('flashcards.profiles.v1');
+        if (pj) { try { pid = (JSON.parse(pj) || {}).activeId; } catch (e) {} }
+        if (pid) {
+          t = localStorage.getItem('flashcards.p.' + pid + '.theme') || 'system';
+          a = localStorage.getItem('flashcards.p.' + pid + '.accent') || 'indigo';
+        } else {
+          t = localStorage.getItem('flashcards.theme') || 'system';
+          a = localStorage.getItem('flashcards.accent') || 'indigo';
+        }
         document.documentElement.setAttribute('data-theme', t);
         document.documentElement.setAttribute('data-accent', a);
       } catch (e) {
@@ -94,6 +102,7 @@
   </svg>
   <header class="app-header">
     <button id="settings-btn" class="gear-btn" aria-label="Settings" title="Settings">⚙</button>
+    <button id="profile-btn" class="avatar-btn" aria-label="Profiles" title="Profiles">?</button>
     <h1>Flashcard Flipper</h1>
     <nav class="tabs">
       <button class="tab active" data-view="home">Home</button>
@@ -350,6 +359,20 @@
   <div id="install-banner" class="install-banner hidden">
     <span>Add this app to your home screen: tap <strong>Share</strong> then <strong>Add to Home Screen</strong>.</span>
     <button id="install-dismiss" aria-label="Dismiss">&times;</button>
+  </div>
+
+  <div id="profiles-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Profiles">
+    <div class="modal-card">
+      <div class="modal-head">
+        <svg class="modal-flipper" aria-hidden="true"><use href="#flipperMascot" /></svg>
+        <h2>Profiles</h2>
+        <button id="profiles-close" class="modal-x" aria-label="Close">&times;</button>
+      </div>
+      <ul id="profile-list" class="profile-list"></ul>
+      <button id="add-profile-btn" class="btn">+ Add profile</button>
+      <p class="modal-note">Each profile keeps its own decks, theme, font size, and
+        settings — all on this device. No accounts, no passwords, nothing leaves your phone.</p>
+    </div>
   </div>
 
   <script src="generators.js"></script>
