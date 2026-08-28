@@ -28,6 +28,11 @@ Three tabs — **Home**, **Study**, and **Import**:
   triangle, diamond, pentagon, hexagon, star, heart). Rendered with HTML-escaping and a
   strict whitelist, so shared decks can't inject anything. The **Colors** and **Shapes**
   auto-create packs are built with this syntax.
+- **Bulleted lists (optional):** separate answers with a **semicolon** to turn a
+  one-liner into a bulleted list — e.g. `Name a primary color | Red; Blue; Yellow`
+  renders three bullet points. Works on either side of the card and still supports the
+  rich syntax above per item. Need a literal semicolon (grammar/punctuation cards)?
+  Escape it as `\;`.
 - **Import / create (Import tab):** tap **Import file…** to load cards from:
   - **`.docx`** (Word) — auto-detects 2-column tables, `question | answer` lines,
     `Q:`/`A:` labels, or alternating lines. Parsed fully offline on-device.

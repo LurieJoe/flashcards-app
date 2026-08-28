@@ -803,15 +803,42 @@ function renderToken(inner) {
   }
   return escapeHtml('{{' + inner + '}}');
 }
-function renderRich(el, text) {
-  const raw = text == null ? '' : String(text);
-  if (!/[*\n]|\{\{/.test(raw)) { el.textContent = raw; return; }
+function renderInline(raw) {
   let out = '';
   for (const part of raw.split(/(\{\{[^}]*\}\})/g)) {
     const m = part.match(/^\{\{([^}]*)\}\}$/);
     out += m ? renderToken(m[1]) : inlineMd(escapeHtml(part));
   }
-  el.innerHTML = out;
+  return out;
+}
+// Split on top-level ';' used as a list separator. Semicolons inside {{...}}
+// tokens are ignored, and '\;' is an escape for a literal semicolon (handy for
+// grammar/punctuation cards, which are about the only place a semicolon appears).
+function splitListItems(s) {
+  const parts = [];
+  let buf = '', depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\' && s[i + 1] === ';') { buf += ';'; i++; continue; }
+    if (ch === '{' && s[i + 1] === '{') { depth++; buf += '{{'; i++; continue; }
+    if (ch === '}' && s[i + 1] === '}') { if (depth > 0) depth--; buf += '}}'; i++; continue; }
+    if (ch === ';' && depth === 0) { parts.push(buf); buf = ''; continue; }
+    buf += ch;
+  }
+  parts.push(buf);
+  return parts;
+}
+function renderRich(el, text) {
+  const raw = text == null ? '' : String(text);
+  if (!/[*\n;\\]|\{\{/.test(raw)) { el.textContent = raw; return; }
+  const items = splitListItems(raw).map(s => s.trim()).filter(s => s.length);
+  if (items.length > 1) {
+    el.innerHTML = '<span class="card-list">' +
+      items.map(it => '<span class="card-li">' + renderInline(it) + '</span>').join('') +
+      '</span>';
+    return;
+  }
+  el.innerHTML = renderInline(items.length ? items[0] : raw);
 }
 
 function buildOrder(shuffle) {

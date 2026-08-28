@@ -615,6 +615,18 @@ main {
   max-width: min(70vw, 260px);
   height: auto;
 }
+.card-list { display: inline-block; text-align: left; margin: 0 auto; }
+.card-li { display: block; position: relative; padding-left: 1.15em; }
+.card-li + .card-li { margin-top: 0.28em; }
+.card-li::before {
+  content: "\2022";
+  position: absolute;
+  left: 0.1em;
+  top: 0;
+  color: var(--primary);
+  font-weight: 700;
+}
+.card-back .card-li::before { color: rgba(255,255,255,0.9); }
 
 .hint {
   text-align: center;
