@@ -1211,6 +1211,10 @@ function initTips() {
 const FAQ = [
   ['Where is my data stored?',
    'Everything lives on your device in the browser\u2019s local storage. Your decks, cards, flags, and settings never leave your phone.'],
+  ['How do profiles work?',
+   'Tap the colored avatar in the top-right to add a profile or switch between them. Each profile has its own decks, theme, accent color, font size, and preferences \u2014 handy when several people share one device. Profiles live only on this device: there are no accounts, logins, or passwords, and switching never sends anything anywhere. Your existing cards automatically became the first profile, \u201cMe\u201d.'],
+  ['How do tips work?',
+   'Tap the lightbulb (next to the \u2699 gear) or \u201cView tips\u201d on the Home screen to see all the tips. When \u201cShow tips at startup\u201d is on, a single quick tip \u2014 a different one each time \u2014 pops up when you open the app; you can turn it off from that popup, the Home screen, or Settings. Turn on \u201cShow tips as you navigate\u201d in Settings for short, in-context reminders as you move between tabs.'],
   ['Does it work offline?',
    'Yes. Once installed to your home screen, the app runs fully offline. You only need a connection the first time you open it (and to fetch updates).'],
   ['How do I import questions?',
@@ -1262,6 +1266,7 @@ function renderPrivacy() {
     <ul>
       <li><strong>No data collection.</strong> This app has no accounts, no sign-in, no analytics, and no tracking of any kind.</li>
       <li><strong>Your questions &amp; answers stay local.</strong> Every deck and card you create or import is stored only in your browser\u2019s local storage on this device. It is never uploaded, transmitted, or shared.</li>
+      <li><strong>Profiles are local too.</strong> Adding a profile simply creates a separate space on this device. There are still no accounts, logins, or passwords, and each profile\u2019s decks and settings never leave your phone.</li>
       <li><strong>Files are processed on-device.</strong> When you import a .docx, .csv, or .json, it is read entirely within the app on your phone. The file\u2019s contents are not sent anywhere.</li>
       <li><strong>No servers, no cookies.</strong> The app is a static page served over HTTPS and then cached for offline use. It makes no background network calls with your data.</li>
       <li><strong>You are in control.</strong> Delete a card, clear a deck, or remove the app to erase your data at any time. Uninstalling or clearing your browser storage permanently deletes everything.</li>
