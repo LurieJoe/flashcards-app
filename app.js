@@ -1,5 +1,9 @@
 'use strict';
 
+/* App version — keep in sync with the service-worker CACHE name.
+   Shown at the bottom of Settings so you can confirm which build is running. */
+const APP_VERSION = 'v38';
+
 /* ============================================================
    Storage model (multi-deck)
    localStorage["flashcards.data.v2"] = {
@@ -1573,6 +1577,8 @@ initProfiles();
 initTips();
 renderFaq();
 renderPrivacy();
+const _ver = document.querySelector('.settings-version');
+if (_ver) _ver.textContent = 'Flashcard Flipper ' + APP_VERSION + ' \u00b7 offline PWA';
 renderDeckOptions();
 updateCount();
 showView('home');
