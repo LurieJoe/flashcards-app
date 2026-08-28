@@ -401,6 +401,22 @@
     </div>
   </div>
 
+  <div id="startup-tip-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Quick tip">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span class="modal-bulb" aria-hidden="true">💡</span>
+        <h2>Quick tip</h2>
+        <button id="startup-tip-close" class="modal-x" aria-label="Close">&times;</button>
+      </div>
+      <ul id="startup-tip-body" class="tips-list"></ul>
+      <button id="see-all-tips-btn" class="btn see-all-btn">See all tips</button>
+      <label class="toggle-row tips-startup-row">
+        <input type="checkbox" class="tips-startup-check" />
+        <span>Show a tip at startup</span>
+      </label>
+    </div>
+  </div>
+
   <script src="generators.js"></script>
   <script src="app.js"></script>
 </body>

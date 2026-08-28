@@ -955,6 +955,7 @@ const PREF = {
   get font() { return K('pref.font'); },
   get tipsStartup() { return K('pref.tipsStartup'); },
   get tipsNavigate() { return K('pref.tipsNavigate'); },
+  get tipIndex() { return K('pref.tipIndex'); },
 };
 function prefBool(key, def) { const v = localStorage.getItem(key); return v === null ? def : v === '1'; }
 
@@ -1095,6 +1096,14 @@ const TIPS = [
     text: 'Open ⚙ Settings to change the theme, accent color, font size, and sound — each profile has its own.' },
 ];
 
+function tipItemHTML(t) {
+  return '<span class="tip-ico" aria-hidden="true">' + t.ico + '</span>' +
+    '<div class="tip-body">' +
+      '<p class="tip-title">' + escapeHtml(t.title) + '</p>' +
+      '<p class="tip-text">' + escapeHtml(t.text) + '</p>' +
+    '</div>';
+}
+
 function renderTips() {
   const ul = document.getElementById('tips-list');
   if (!ul) return;
@@ -1102,18 +1111,32 @@ function renderTips() {
   for (const t of TIPS) {
     const li = document.createElement('li');
     li.className = 'tip-item';
-    li.innerHTML =
-      '<span class="tip-ico" aria-hidden="true">' + t.ico + '</span>' +
-      '<div class="tip-body">' +
-        '<p class="tip-title">' + escapeHtml(t.title) + '</p>' +
-        '<p class="tip-text">' + escapeHtml(t.text) + '</p>' +
-      '</div>';
+    li.innerHTML = tipItemHTML(t);
     ul.appendChild(li);
   }
 }
 
 function openTips() { document.getElementById('tips-modal').classList.remove('hidden'); }
 function closeTips() { document.getElementById('tips-modal').classList.add('hidden'); }
+
+/* Single rotating tip shown at startup (a different one each launch) */
+function pickStartupTip() {
+  const idx = parseInt(localStorage.getItem(PREF.tipIndex) || '0', 10) || 0;
+  const tip = TIPS[idx % TIPS.length];
+  localStorage.setItem(PREF.tipIndex, String((idx + 1) % TIPS.length));
+  return tip;
+}
+function openStartupTip() {
+  const ul = document.getElementById('startup-tip-body');
+  const li = document.createElement('li');
+  li.className = 'tip-item';
+  li.innerHTML = tipItemHTML(pickStartupTip());
+  ul.innerHTML = '';
+  ul.appendChild(li);
+  syncTipsStartupChecks();
+  document.getElementById('startup-tip-modal').classList.remove('hidden');
+}
+function closeStartupTip() { document.getElementById('startup-tip-modal').classList.add('hidden'); }
 
 function syncTipsStartupChecks() {
   const on = prefBool(PREF.tipsStartup, true);
@@ -1165,6 +1188,10 @@ function initTips() {
   document.getElementById('tips-close').addEventListener('click', closeTips);
   const modal = document.getElementById('tips-modal');
   modal.addEventListener('click', (e) => { if (e.target === modal) closeTips(); });
+  document.getElementById('startup-tip-close').addEventListener('click', closeStartupTip);
+  document.getElementById('see-all-tips-btn').addEventListener('click', () => { closeStartupTip(); openTips(); });
+  const sModal = document.getElementById('startup-tip-modal');
+  sModal.addEventListener('click', (e) => { if (e.target === sModal) closeStartupTip(); });
   document.querySelectorAll('.tips-startup-check').forEach(c =>
     c.addEventListener('change', () => setTipsStartup(c.checked)));
   const nav = document.getElementById('pref-tips-navigate');
@@ -1541,7 +1568,7 @@ renderPrivacy();
 renderDeckOptions();
 updateCount();
 showView('home');
-if (prefBool(PREF.tipsStartup, true)) openTips();
+if (prefBool(PREF.tipsStartup, true)) openStartupTip();
 maybeShowInstallBanner();
 if (_removedHeaders) {
   setTimeout(() => toast(`Removed ${_removedHeaders} column-header row${_removedHeaders > 1 ? 's' : ''} from your decks.`), 900);
