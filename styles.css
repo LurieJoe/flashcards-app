@@ -914,6 +914,18 @@ main {
 .btn:disabled { opacity: 0.48; cursor: not-allowed; transform: none; }
 
 /* Study games */
+.study-actions .btn { min-width: 0; padding-left: 9px; padding-right: 9px; }
+.match-start-btn {
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+}
+.match-eligibility {
+  min-height: 1.2em;
+  margin: -4px 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
 .start-mode-btn { width: 100%; flex: none; }
 .mode-eligibility {
   min-height: 1.2em;

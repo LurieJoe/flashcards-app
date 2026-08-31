@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v43';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -557,14 +557,17 @@ const deckListEl = document.getElementById('deck-list');
 const studyArea = document.getElementById('study-area');
 const matchArea = document.getElementById('match-area');
 const choiceArea = document.getElementById('choice-area');
+const studyModePicker = document.getElementById('study-mode-picker');
 const startModeBtn = document.getElementById('start-mode-btn');
 const modeEligibility = document.getElementById('mode-eligibility');
+const legacyStudyActions = document.getElementById('legacy-study-actions');
+const hasStudyModePicker = !!(studyModePicker && startModeBtn && modeEligibility && choiceArea);
 
 function openDeckPicker() {
   matchSessionToken++;
   studyArea.classList.add('hidden');
   matchArea.classList.add('hidden');
-  choiceArea.classList.add('hidden');
+  if (choiceArea) choiceArea.classList.add('hidden');
   deckPicker.classList.remove('hidden');
   stopTimer();
   timerEl.classList.add('hidden');
@@ -574,8 +577,12 @@ function openDeckPicker() {
 }
 
 function setStudyMode(mode) {
+  if (!hasStudyModePicker) return;
   if (!['flashcards', 'matching', 'multiple-choice'].includes(mode)) return;
   studyMode = mode;
+  studyModePicker.hidden = false;
+  startModeBtn.hidden = false;
+  if (legacyStudyActions) legacyStudyActions.hidden = true;
   document.querySelectorAll('.study-mode-option').forEach(button => {
     const active = button.dataset.studyMode === mode;
     button.classList.toggle('active', active);
@@ -690,7 +697,8 @@ function renderDeckList() {
 
   renderHiddenDecks(hiddenDecks);
   updateFlaggedTotal();
-  setStudyMode(studyMode);
+  if (hasStudyModePicker) setStudyMode(studyMode);
+  else updateLegacyMatchEligibility();
 }
 
 // Touch swipe-left reveals the Hide button; tapping a revealed row closes it.
@@ -777,20 +785,21 @@ document.getElementById('select-all-btn').addEventListener('click', () => {
   const boxes = deckListEl.querySelectorAll('input[type=checkbox]:not(:disabled)');
   const allChecked = [...boxes].every(b => b.checked);
   boxes.forEach(b => { b.checked = !allChecked; });
-  updateStudyEligibility();
+  refreshStudyEligibility();
 });
 
 deckListEl.addEventListener('change', event => {
-  if (studyMode !== 'flashcards' && event.target.matches('input[type=checkbox]') && event.target.checked) {
+  if (hasStudyModePicker && studyMode !== 'flashcards' &&
+      event.target.matches('input[type=checkbox]') && event.target.checked) {
     deckListEl.querySelectorAll('input[type=checkbox]:checked').forEach(box => {
       if (box !== event.target) box.checked = false;
     });
   }
-  updateStudyEligibility();
+  refreshStudyEligibility();
 });
-document.getElementById('only-flagged').addEventListener('change', updateStudyEligibility);
+document.getElementById('only-flagged').addEventListener('change', refreshStudyEligibility);
 
-startModeBtn.addEventListener('click', () => {
+if (startModeBtn) startModeBtn.addEventListener('click', () => {
   if (studyMode === 'matching') {
     startMatchGame();
     return;
@@ -805,9 +814,17 @@ startModeBtn.addEventListener('click', () => {
   startStudy(ids, onlyFlagged);
 });
 
+const legacyStudyBtn = document.getElementById('start-study-btn');
+if (legacyStudyBtn) legacyStudyBtn.addEventListener('click', () => {
+  const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
+  if (ids.length === 0) { alert('Select at least one deck to study.'); return; }
+  startStudy(ids, document.getElementById('only-flagged').checked);
+});
+
 document.getElementById('back-to-decks').addEventListener('click', openDeckPicker);
 document.getElementById('match-back-to-decks').addEventListener('click', openDeckPicker);
-document.getElementById('choice-back-to-decks').addEventListener('click', openDeckPicker);
+const choiceBackBtn = document.getElementById('choice-back-to-decks');
+if (choiceBackBtn) choiceBackBtn.addEventListener('click', openDeckPicker);
 
 // Search every deck's questions AND answers, then study the matches as a custom set.
 document.getElementById('search-form').addEventListener('submit', (e) => {
@@ -979,6 +996,8 @@ const MATCH_SIZE = 5;
 const matchBoard = document.getElementById('match-board');
 const matchStatus = document.getElementById('match-status');
 const matchProgress = document.getElementById('match-progress');
+const legacyMatchStartBtn = document.getElementById('start-match-btn');
+const legacyMatchEligibility = document.getElementById('match-eligibility');
 let matchMeasureEl = null;
 
 function shuffled(items) {
@@ -1098,7 +1117,43 @@ function getMatchAvailability() {
   return { source, eligible, rounds };
 }
 
+function refreshStudyEligibility() {
+  if (hasStudyModePicker) updateStudyEligibility();
+  else updateLegacyMatchEligibility();
+}
+
+function updateLegacyMatchEligibility() {
+  if (!legacyMatchStartBtn || !legacyMatchEligibility) return;
+  const source = selectedMatchSource();
+  legacyMatchStartBtn.disabled = true;
+  if (source.ids.length === 0) {
+    legacyMatchEligibility.textContent = 'Select one deck to see how many cards are applicable.';
+    return;
+  }
+  if (source.ids.length > 1) {
+    legacyMatchEligibility.textContent = 'Choose exactly one deck for Matching Pairs.';
+    return;
+  }
+
+  const { eligible, rounds } = getMatchAvailability();
+  const label = source.onlyFlagged ? 'flagged cards' : 'cards';
+  legacyMatchEligibility.textContent =
+    `${eligible.length} of ${source.cards.length} ${label} are applicable for Matching Pairs.`;
+  if (eligible.length < MATCH_SIZE) {
+    legacyMatchEligibility.textContent += ' At least 5 are needed.';
+    return;
+  }
+  if (!rounds.length) {
+    legacyMatchEligibility.textContent +=
+      ' Repeated questions or answers prevent a complete 5-pair round.';
+    return;
+  }
+  legacyMatchStartBtn.disabled = false;
+  legacyMatchEligibility.textContent += ' Complete groups of 5 are used.';
+}
+
 function updateStudyEligibility() {
+  if (!hasStudyModePicker) return;
   startModeBtn.disabled = false;
   modeEligibility.classList.toggle('hidden', studyMode === 'flashcards');
   if (studyMode === 'flashcards') return;
@@ -1160,7 +1215,7 @@ function startMatchGame() {
   deckPicker.classList.add('hidden');
   studyArea.classList.add('hidden');
   matchArea.classList.remove('hidden');
-  choiceArea.classList.add('hidden');
+  if (choiceArea) choiceArea.classList.add('hidden');
   stopTimer();
   timerEl.classList.add('hidden');
   document.getElementById('match-deck-label').textContent =
@@ -1287,15 +1342,17 @@ function renderMatchComplete() {
   matchBoard.appendChild(complete);
 }
 
+if (legacyMatchStartBtn) legacyMatchStartBtn.addEventListener('click', startMatchGame);
+
 let matchResizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(matchResizeTimer);
   matchResizeTimer = setTimeout(() => {
     if (!deckPicker.classList.contains('hidden')) {
-      updateStudyEligibility();
+      refreshStudyEligibility();
       return;
     }
-    if (!choiceArea.classList.contains('hidden')) {
+    if (choiceArea && !choiceArea.classList.contains('hidden')) {
       const remaining = choiceQuestions.slice(choiceQuestionIndex);
       const stillFits = remaining.every(question =>
         choiceQuestionFits(question.card.q) &&
@@ -1474,7 +1531,7 @@ function startChoiceGame(questionCards = null) {
 
   const questions = buildChoiceQuestions(questionCards, sourceCards);
   if (!questions.length) {
-    updateStudyEligibility();
+    refreshStudyEligibility();
     return;
   }
 
@@ -1636,8 +1693,8 @@ function renderChoiceComplete() {
   choiceOptionsEl.appendChild(complete);
 }
 
-choiceCheckBtn.addEventListener('click', checkChoiceAnswer);
-choiceNextBtn.addEventListener('click', nextChoiceQuestion);
+if (choiceCheckBtn) choiceCheckBtn.addEventListener('click', checkChoiceAnswer);
+if (choiceNextBtn) choiceNextBtn.addEventListener('click', nextChoiceQuestion);
 
 function buildOrder(shuffle) {
   order = studyCards.map((_, i) => i);

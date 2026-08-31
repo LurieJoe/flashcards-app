@@ -147,7 +147,7 @@
           Choose how to study
         </h2>
 
-        <div id="study-mode-picker" class="study-mode-picker" role="radiogroup" aria-label="Study mode">
+        <div id="study-mode-picker" class="study-mode-picker" role="radiogroup" aria-label="Study mode" hidden>
           <button type="button" class="study-mode-option active" data-study-mode="flashcards"
                   role="radio" aria-checked="true">
             <span class="study-mode-icon" aria-hidden="true">↻</span>
@@ -191,9 +191,19 @@
             <input type="checkbox" id="reverse-mode" />
             <span>Reverse — show the answer, guess the question</span>
           </label>
-          <button id="start-mode-btn" class="btn primary start-mode-btn">Start Flashcards</button>
+          <button id="start-mode-btn" class="btn primary start-mode-btn" hidden>Start Flashcards</button>
           <p id="mode-eligibility" class="mode-eligibility hidden" aria-live="polite">
           </p>
+          <div id="legacy-study-actions">
+            <p class="picker-note">Reverse applies to Study only, not Tap matching pairs.</p>
+            <div class="controls study-actions">
+              <button id="start-study-btn" class="btn primary">Study</button>
+              <button id="start-match-btn" class="btn match-start-btn" disabled>Tap matching pairs</button>
+            </div>
+            <p id="match-eligibility" class="match-eligibility" aria-live="polite">
+              Select one deck to see how many cards are applicable.
+            </p>
+          </div>
         </div>
         <div id="hidden-decks" class="hidden-decks"></div>
       </div>
