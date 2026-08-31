@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v41';
 
 /* ============================================================
    Storage model (multi-deck)
