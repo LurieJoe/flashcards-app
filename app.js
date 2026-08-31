@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -48,6 +48,15 @@ let matchFirstTile = null;
 let matchLocked = false;
 let matchRoundMatched = 0;
 let matchSessionToken = 0;
+let studyMode = 'flashcards';
+let choiceQuestions = [];
+let choiceQuestionIndex = 0;
+let choiceScore = 0;
+let choiceMissedCards = [];
+let choiceSourceCards = [];
+let choiceSourceDeck = null;
+let choiceCurrentQuestionCards = [];
+let choiceAnswered = false;
 let editOpenedOnce = false; // default Import tab to "My cards" on first open per session
 let order = [];
 let pos = 0;
@@ -547,11 +556,15 @@ const deckPicker = document.getElementById('deck-picker');
 const deckListEl = document.getElementById('deck-list');
 const studyArea = document.getElementById('study-area');
 const matchArea = document.getElementById('match-area');
+const choiceArea = document.getElementById('choice-area');
+const startModeBtn = document.getElementById('start-mode-btn');
+const modeEligibility = document.getElementById('mode-eligibility');
 
 function openDeckPicker() {
   matchSessionToken++;
   studyArea.classList.add('hidden');
   matchArea.classList.add('hidden');
+  choiceArea.classList.add('hidden');
   deckPicker.classList.remove('hidden');
   stopTimer();
   timerEl.classList.add('hidden');
@@ -559,6 +572,39 @@ function openDeckPicker() {
   if (ss) ss.textContent = '';
   renderDeckList();
 }
+
+function setStudyMode(mode) {
+  if (!['flashcards', 'matching', 'multiple-choice'].includes(mode)) return;
+  studyMode = mode;
+  document.querySelectorAll('.study-mode-option').forEach(button => {
+    const active = button.dataset.studyMode === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-checked', String(active));
+  });
+
+  const flashcards = mode === 'flashcards';
+  document.getElementById('search-form').classList.toggle('hidden', !flashcards);
+  document.getElementById('search-status').classList.toggle('hidden', !flashcards);
+  document.getElementById('select-all-btn').classList.toggle('hidden', !flashcards);
+  document.getElementById('reverse-row').classList.toggle('hidden', !flashcards);
+  document.getElementById('deck-selection-help').textContent = flashcards
+    ? 'Select one or more decks. Multiple decks are studied together.'
+    : 'Select one deck for this study mode.';
+
+  if (!flashcards) {
+    const checked = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')];
+    checked.slice(1).forEach(box => { box.checked = false; });
+  }
+  startModeBtn.textContent = mode === 'flashcards'
+    ? 'Start Flashcards'
+    : mode === 'matching'
+      ? 'Start Matching Pairs'
+      : 'Start Multiple Choice';
+  updateStudyEligibility();
+}
+
+document.querySelectorAll('.study-mode-option').forEach(button =>
+  button.addEventListener('click', () => setStudyMode(button.dataset.studyMode)));
 
 function setDeckHidden(id, hidden) {
   const d = state.decks.find(x => x.id === id);
@@ -644,7 +690,7 @@ function renderDeckList() {
 
   renderHiddenDecks(hiddenDecks);
   updateFlaggedTotal();
-  updateMatchEligibility();
+  setStudyMode(studyMode);
 }
 
 // Touch swipe-left reveals the Hide button; tapping a revealed row closes it.
@@ -731,13 +777,28 @@ document.getElementById('select-all-btn').addEventListener('click', () => {
   const boxes = deckListEl.querySelectorAll('input[type=checkbox]:not(:disabled)');
   const allChecked = [...boxes].every(b => b.checked);
   boxes.forEach(b => { b.checked = !allChecked; });
-  updateMatchEligibility();
+  updateStudyEligibility();
 });
 
-deckListEl.addEventListener('change', updateMatchEligibility);
-document.getElementById('only-flagged').addEventListener('change', updateMatchEligibility);
+deckListEl.addEventListener('change', event => {
+  if (studyMode !== 'flashcards' && event.target.matches('input[type=checkbox]') && event.target.checked) {
+    deckListEl.querySelectorAll('input[type=checkbox]:checked').forEach(box => {
+      if (box !== event.target) box.checked = false;
+    });
+  }
+  updateStudyEligibility();
+});
+document.getElementById('only-flagged').addEventListener('change', updateStudyEligibility);
 
-document.getElementById('start-study-btn').addEventListener('click', () => {
+startModeBtn.addEventListener('click', () => {
+  if (studyMode === 'matching') {
+    startMatchGame();
+    return;
+  }
+  if (studyMode === 'multiple-choice') {
+    startChoiceGame();
+    return;
+  }
   const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
   if (ids.length === 0) { alert('Select at least one deck to study.'); return; }
   const onlyFlagged = document.getElementById('only-flagged').checked;
@@ -746,6 +807,7 @@ document.getElementById('start-study-btn').addEventListener('click', () => {
 
 document.getElementById('back-to-decks').addEventListener('click', openDeckPicker);
 document.getElementById('match-back-to-decks').addEventListener('click', openDeckPicker);
+document.getElementById('choice-back-to-decks').addEventListener('click', openDeckPicker);
 
 // Search every deck's questions AND answers, then study the matches as a custom set.
 document.getElementById('search-form').addEventListener('submit', (e) => {
@@ -917,8 +979,6 @@ const MATCH_SIZE = 5;
 const matchBoard = document.getElementById('match-board');
 const matchStatus = document.getElementById('match-status');
 const matchProgress = document.getElementById('match-progress');
-const matchStartBtn = document.getElementById('start-match-btn');
-const matchEligibility = document.getElementById('match-eligibility');
 let matchMeasureEl = null;
 
 function shuffled(items) {
@@ -1030,47 +1090,65 @@ function selectedMatchSource() {
   return { ids, deck, cards, onlyFlagged };
 }
 
-function updateMatchEligibility() {
+function getMatchAvailability() {
   const source = selectedMatchSource();
-  matchStartBtn.disabled = true;
+  if (!source.deck) return { source, eligible: [], rounds: [] };
+  const eligible = getMatchEligibleCards(source.cards);
+  const rounds = buildMatchRounds(eligible);
+  return { source, eligible, rounds };
+}
 
+function updateStudyEligibility() {
+  startModeBtn.disabled = false;
+  modeEligibility.classList.toggle('hidden', studyMode === 'flashcards');
+  if (studyMode === 'flashcards') return;
+
+  const source = selectedMatchSource();
+  startModeBtn.disabled = true;
   if (source.ids.length === 0) {
-    matchEligibility.textContent = 'Select one deck to see how many short cards qualify.';
+    modeEligibility.textContent = `Select one deck to see which cards are applicable for ${
+      studyMode === 'matching' ? 'Matching Pairs' : 'Multiple Choice'}.`;
     return;
   }
   if (source.ids.length > 1) {
-    matchEligibility.textContent = 'Choose exactly one deck for Matching Pairs.';
+    modeEligibility.textContent = 'Choose exactly one deck for this study mode.';
     return;
   }
 
-  const eligible = getMatchEligibleCards(source.cards);
   const label = source.onlyFlagged ? 'flagged cards' : 'cards';
-  if (eligible.length < MATCH_SIZE) {
-    matchEligibility.textContent =
-      `${eligible.length} of ${source.cards.length} ${label} are short enough. At least 5 are needed.`;
+  if (studyMode === 'matching') {
+    const { eligible, rounds } = getMatchAvailability();
+    modeEligibility.textContent =
+      `${eligible.length} of ${source.cards.length} ${label} are applicable for Matching Pairs.`;
+    if (eligible.length < MATCH_SIZE) {
+      modeEligibility.textContent += ' At least 5 are needed.';
+      return;
+    }
+    if (!rounds.length) {
+      modeEligibility.textContent +=
+        ' Repeated questions or answers prevent a complete 5-pair round.';
+      return;
+    }
+    startModeBtn.disabled = false;
+    modeEligibility.textContent += ' Complete groups of 5 are used.';
     return;
   }
 
-  const rounds = buildMatchRounds(eligible);
-  if (!rounds.length) {
-    matchEligibility.textContent =
-      `${eligible.length} short cards qualify, but repeated questions or answers prevent a 5-pair round.`;
+  const available = getChoiceAvailability(source.cards);
+  modeEligibility.textContent =
+    `${available.questions.length} of ${source.cards.length} ${label} are applicable for Multiple Choice.`;
+  if (!available.questions.length) {
+    modeEligibility.textContent += ' More unique, fitting answer choices are needed.';
     return;
   }
-
-  matchStartBtn.disabled = false;
-  matchEligibility.textContent =
-    `${eligible.length} of ${source.cards.length} ${label} are short enough. ` +
-    'Matching Pairs uses complete groups of 5.';
+  startModeBtn.disabled = false;
+  modeEligibility.textContent += ' Choices are generated when the game starts.';
 }
 
 function startMatchGame() {
-  const source = selectedMatchSource();
-  if (!source.deck) return;
-  const eligible = getMatchEligibleCards(source.cards);
-  const rounds = buildMatchRounds(eligible);
+  const { source, eligible, rounds } = getMatchAvailability();
   if (eligible.length < MATCH_SIZE || !rounds.length) {
-    updateMatchEligibility();
+    updateStudyEligibility();
     return;
   }
 
@@ -1082,10 +1160,11 @@ function startMatchGame() {
   deckPicker.classList.add('hidden');
   studyArea.classList.add('hidden');
   matchArea.classList.remove('hidden');
+  choiceArea.classList.add('hidden');
   stopTimer();
   timerEl.classList.add('hidden');
   document.getElementById('match-deck-label').textContent =
-    `${source.deck.name} · ${playableCount} short cards`;
+    `${source.deck.name} · ${playableCount} applicable cards`;
   renderMatchRound();
 }
 
@@ -1208,13 +1287,29 @@ function renderMatchComplete() {
   matchBoard.appendChild(complete);
 }
 
-matchStartBtn.addEventListener('click', startMatchGame);
 let matchResizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(matchResizeTimer);
   matchResizeTimer = setTimeout(() => {
     if (!deckPicker.classList.contains('hidden')) {
-      updateMatchEligibility();
+      updateStudyEligibility();
+      return;
+    }
+    if (!choiceArea.classList.contains('hidden')) {
+      const remaining = choiceQuestions.slice(choiceQuestionIndex);
+      const stillFits = remaining.every(question =>
+        choiceQuestionFits(question.card.q) &&
+        question.options.every(option => choiceOptionFits(option.text)));
+      if (stillFits) return;
+      const questionCards = remaining.map(question => question.card);
+      const available = getChoiceAvailability(questionCards, choiceSourceCards);
+      if (available.questions.length) {
+        startChoiceGame(questionCards);
+        toast('Multiple Choice restarted to fit the new screen size.');
+      } else {
+        openDeckPicker();
+        toast('No remaining questions are applicable at this screen size.');
+      }
       return;
     }
     if (matchArea.classList.contains('hidden')) return;
@@ -1230,10 +1325,319 @@ window.addEventListener('resize', () => {
       toast('Matching Pairs restarted to fit the new screen size.');
     } else {
       openDeckPicker();
-      toast('Fewer than 5 cards fit at this screen size.');
+      toast('Fewer than 5 cards are applicable at this screen size.');
     }
   }, 150);
 });
+
+/* ---------- Study: multiple-choice game ---------- */
+const CHOICE_SINGLE_DISTRACTORS = 3;
+const CHOICE_MULTI_DISTRACTORS = 2;
+const choiceQuestionEl = document.getElementById('choice-question');
+const choiceOptionsEl = document.getElementById('choice-options');
+const choiceInstruction = document.getElementById('choice-instruction');
+const choiceProgress = document.getElementById('choice-progress');
+const choiceStatus = document.getElementById('choice-status');
+const choiceCheckBtn = document.getElementById('choice-check-btn');
+const choiceNextBtn = document.getElementById('choice-next-btn');
+let choiceQuestionMeasureEl = null;
+let choiceOptionMeasureEl = null;
+
+function getChoiceQuestionMeasureEl() {
+  if (choiceQuestionMeasureEl) return choiceQuestionMeasureEl;
+  choiceQuestionMeasureEl = document.createElement('div');
+  choiceQuestionMeasureEl.className = 'choice-question choice-measurer';
+  choiceQuestionMeasureEl.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(choiceQuestionMeasureEl);
+  return choiceQuestionMeasureEl;
+}
+
+function getChoiceOptionMeasureEl() {
+  if (choiceOptionMeasureEl) return choiceOptionMeasureEl;
+  choiceOptionMeasureEl = document.createElement('button');
+  choiceOptionMeasureEl.type = 'button';
+  choiceOptionMeasureEl.className = 'choice-option choice-measurer';
+  choiceOptionMeasureEl.setAttribute('aria-hidden', 'true');
+  choiceOptionMeasureEl.tabIndex = -1;
+  document.body.appendChild(choiceOptionMeasureEl);
+  return choiceOptionMeasureEl;
+}
+
+function choiceQuestionFits(text) {
+  const el = getChoiceQuestionMeasureEl();
+  el.style.width = `${Math.max(240, Math.min(window.innerWidth || 320, 640) - 32)}px`;
+  el.style.height = '160px';
+  renderRich(el, text);
+  return el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1;
+}
+
+function choiceOptionFits(text) {
+  const el = getChoiceOptionMeasureEl();
+  el.style.width = `${Math.max(240, Math.min(window.innerWidth || 320, 640) - 32)}px`;
+  el.style.height = '76px';
+  renderRich(el, text);
+  return el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1;
+}
+
+function choiceAnswerItems(card) {
+  const items = splitListItems(String(card.a ?? '')).map(item => item.trim()).filter(Boolean);
+  const unique = new Map();
+  for (const text of items) {
+    const key = normalizeMatchValue(text);
+    if (key && !unique.has(key)) unique.set(key, { text, key });
+  }
+  return [...unique.values()];
+}
+
+function accessibleRichText(text) {
+  return String(text ?? '')
+    .replace(/\{\{shape:([^|}]+)\|([^|}]+)(?:\|[^}]*)?\}\}/gi, (_, shape, color) =>
+      `${color} ${shape}`)
+    .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/\\;/g, ';')
+    .replace(/;/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function choiceCardData(card, requireQuestionFit) {
+  const qKey = normalizeMatchValue(card.q);
+  const correctItems = choiceAnswerItems(card);
+  if (!qKey || correctItems.length < 1 || correctItems.length > 4) return null;
+  if (requireQuestionFit && !choiceQuestionFits(card.q)) return null;
+  if (!correctItems.every(item => choiceOptionFits(item.text))) return null;
+  return { card, qKey, correctItems };
+}
+
+function getChoiceAvailability(questionCards, poolCards = questionCards) {
+  const questionMap = new Map();
+  for (const card of questionCards) {
+    const data = choiceCardData(card, true);
+    if (data && !questionMap.has(data.qKey)) questionMap.set(data.qKey, data);
+  }
+
+  const pool = [];
+  for (const card of poolCards) {
+    const data = choiceCardData(card, false);
+    if (!data) continue;
+    for (const item of data.correctItems) pool.push({ ...item, card });
+  }
+
+  const questions = [];
+  for (const data of questionMap.values()) {
+    const correctKeys = new Set(data.correctItems.map(item => item.key));
+    const distractorMap = new Map();
+    for (const item of pool) {
+      if (item.card === data.card || correctKeys.has(item.key) || distractorMap.has(item.key)) continue;
+      distractorMap.set(item.key, item);
+    }
+    const required = data.correctItems.length > 1
+      ? CHOICE_MULTI_DISTRACTORS
+      : CHOICE_SINGLE_DISTRACTORS;
+    if (distractorMap.size >= required) {
+      questions.push({ ...data, distractors: [...distractorMap.values()] });
+    }
+  }
+  return { questions };
+}
+
+function buildChoiceQuestions(questionCards, poolCards = questionCards) {
+  return shuffled(getChoiceAvailability(questionCards, poolCards).questions).map(data => {
+    const multi = data.correctItems.length > 1;
+    const distractorCount = multi ? CHOICE_MULTI_DISTRACTORS : CHOICE_SINGLE_DISTRACTORS;
+    const correctOptions = data.correctItems.map(item => ({ ...item, correct: true }));
+    const distractors = shuffled(data.distractors).slice(0, distractorCount)
+      .map(item => ({ text: item.text, key: item.key, correct: false }));
+    return {
+      card: data.card,
+      multi,
+      options: shuffled([...correctOptions, ...distractors]),
+    };
+  });
+}
+
+function startChoiceGame(questionCards = null) {
+  let sourceCards;
+  let sourceDeck;
+  if (questionCards) {
+    sourceCards = choiceSourceCards;
+    sourceDeck = choiceSourceDeck;
+  } else {
+    const source = selectedMatchSource();
+    if (!source.deck) return;
+    sourceCards = source.cards;
+    sourceDeck = source.deck;
+    questionCards = source.cards;
+  }
+
+  const questions = buildChoiceQuestions(questionCards, sourceCards);
+  if (!questions.length) {
+    updateStudyEligibility();
+    return;
+  }
+
+  choiceSourceCards = sourceCards;
+  choiceSourceDeck = sourceDeck;
+  choiceQuestions = questions;
+  choiceCurrentQuestionCards = questions.map(question => question.card);
+  choiceQuestionIndex = 0;
+  choiceScore = 0;
+  choiceMissedCards = [];
+  choiceAnswered = false;
+  studyDeckIds = [sourceDeck.id];
+  deckPicker.classList.add('hidden');
+  studyArea.classList.add('hidden');
+  matchArea.classList.add('hidden');
+  choiceArea.classList.remove('hidden');
+  stopTimer();
+  timerEl.classList.add('hidden');
+  document.getElementById('choice-deck-label').textContent =
+    `${sourceDeck.name} · ${questions.length} applicable question${questions.length === 1 ? '' : 's'}`;
+  renderChoiceQuestion();
+}
+
+function renderChoiceQuestion() {
+  const question = choiceQuestions[choiceQuestionIndex];
+  choiceAnswered = false;
+  choiceQuestionEl.classList.remove('hidden');
+  choiceInstruction.classList.remove('hidden');
+  choiceStatus.classList.remove('success', 'error', 'hidden');
+  choiceStatus.textContent = '';
+  choiceOptionsEl.innerHTML = '';
+  choiceProgress.textContent =
+    `Question ${choiceQuestionIndex + 1} of ${choiceQuestions.length} · Score ${choiceScore}`;
+  choiceInstruction.textContent = question.multi
+    ? 'Choose every correct answer.'
+    : 'Choose one answer.';
+  renderRich(choiceQuestionEl, question.card.q);
+  choiceQuestionEl.setAttribute('aria-label', `Question: ${accessibleRichText(question.card.q)}`);
+
+  for (const option of question.options) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'choice-option';
+    button.dataset.key = option.key;
+    button.dataset.correct = String(option.correct);
+    button.dataset.label = accessibleRichText(option.text);
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', button.dataset.label);
+    renderRich(button, option.text);
+    button.addEventListener('click', () => chooseChoiceOption(button, question.multi));
+    choiceOptionsEl.appendChild(button);
+  }
+
+  choiceCheckBtn.disabled = true;
+  choiceCheckBtn.classList.remove('hidden');
+  choiceNextBtn.classList.add('hidden');
+}
+
+function chooseChoiceOption(button, multi) {
+  if (choiceAnswered) return;
+  if (!multi) {
+    choiceOptionsEl.querySelectorAll('.choice-option.selected').forEach(option => {
+      if (option !== button) {
+        option.classList.remove('selected');
+        option.setAttribute('aria-pressed', 'false');
+      }
+    });
+  }
+  const selected = button.classList.toggle('selected');
+  button.setAttribute('aria-pressed', String(selected));
+  choiceCheckBtn.disabled = !choiceOptionsEl.querySelector('.choice-option.selected');
+}
+
+function checkChoiceAnswer() {
+  if (choiceAnswered) return;
+  const buttons = [...choiceOptionsEl.querySelectorAll('.choice-option')];
+  const selected = buttons.filter(button => button.classList.contains('selected'));
+  if (!selected.length) return;
+
+  choiceAnswered = true;
+  const exact = buttons.every(button =>
+    (button.dataset.correct === 'true') === button.classList.contains('selected'));
+  if (exact) {
+    choiceScore++;
+    playCorrectMatch();
+    choiceStatus.textContent = 'Correct!';
+    choiceStatus.classList.add('success');
+  } else {
+    choiceMissedCards.push(choiceQuestions[choiceQuestionIndex].card);
+    playIncorrectMatch();
+    choiceStatus.textContent = 'Not quite. The correct choice or choices are highlighted.';
+    choiceStatus.classList.add('error');
+  }
+
+  for (const button of buttons) {
+    const correct = button.dataset.correct === 'true';
+    const picked = button.classList.contains('selected');
+    button.disabled = true;
+    if (correct && picked) {
+      button.classList.add('correct');
+      button.setAttribute('aria-label', `${button.dataset.label}, correct answer, selected`);
+    } else if (correct) {
+      button.classList.add('missed');
+      button.setAttribute('aria-label', `${button.dataset.label}, correct answer, not selected`);
+    } else if (picked) {
+      button.classList.add('incorrect');
+      button.setAttribute('aria-label', `${button.dataset.label}, incorrect answer, selected`);
+    }
+  }
+  choiceProgress.textContent =
+    `Question ${choiceQuestionIndex + 1} of ${choiceQuestions.length} · Score ${choiceScore}`;
+  choiceCheckBtn.classList.add('hidden');
+  choiceNextBtn.textContent =
+    choiceQuestionIndex === choiceQuestions.length - 1 ? 'See results' : 'Next question';
+  choiceNextBtn.classList.remove('hidden');
+}
+
+function nextChoiceQuestion() {
+  if (!choiceAnswered) return;
+  choiceQuestionIndex++;
+  if (choiceQuestionIndex >= choiceQuestions.length) renderChoiceComplete();
+  else renderChoiceQuestion();
+}
+
+function renderChoiceComplete() {
+  const total = choiceQuestions.length;
+  const percent = Math.round((choiceScore / total) * 100);
+  choiceQuestionEl.classList.add('hidden');
+  choiceInstruction.classList.add('hidden');
+  choiceStatus.classList.add('hidden');
+  choiceCheckBtn.classList.add('hidden');
+  choiceNextBtn.classList.add('hidden');
+  choiceProgress.textContent = 'Complete';
+  choiceOptionsEl.innerHTML = '';
+
+  const complete = document.createElement('div');
+  complete.className = 'choice-complete';
+  complete.innerHTML =
+    '<h3>Quiz complete!</h3>' +
+    `<div class="choice-score">${percent}%</div>` +
+    `<p>${choiceScore} of ${total} correct</p>`;
+  const actions = document.createElement('div');
+  actions.className = 'choice-complete-actions';
+  const again = document.createElement('button');
+  again.type = 'button';
+  again.className = 'btn primary';
+  again.textContent = 'Play again';
+  again.addEventListener('click', () => startChoiceGame(choiceCurrentQuestionCards.slice()));
+  actions.appendChild(again);
+  if (choiceMissedCards.length) {
+    const review = document.createElement('button');
+    review.type = 'button';
+    review.className = 'btn';
+    review.textContent = `Review ${choiceMissedCards.length} missed`;
+    review.addEventListener('click', () => startChoiceGame(choiceMissedCards.slice()));
+    actions.appendChild(review);
+  }
+  complete.appendChild(actions);
+  choiceOptionsEl.appendChild(complete);
+}
+
+choiceCheckBtn.addEventListener('click', checkChoiceAnswer);
+choiceNextBtn.addEventListener('click', nextChoiceQuestion);
 
 function buildOrder(shuffle) {
   order = studyCards.map((_, i) => i);
@@ -1436,10 +1840,13 @@ const TIPS = [
     text: 'Tick “Flag this card for review” while studying. Back on the Study picker, turn on “Only study flagged cards” to run just those.' },
   { ico: '🔄', view: 'study',
     title: 'Reverse mode',
-    text: 'In the Study picker, turn on “Reverse” to see the answer first and guess the question instead. Reverse applies to regular Study sessions, not Tap matching pairs.' },
+    text: 'Choose Flashcards in the Study picker, then turn on “Reverse” to see the answer first and guess the question instead. Reverse does not apply to the game modes.' },
   { ico: '🧩', view: 'study',
-    title: 'Play Tap matching pairs',
-    text: 'Select one deck on the Study tab, then tap “Tap matching pairs.” Questions appear on the left and shuffled answers on the right. At least five short cards must qualify; tap one from each column to make a pair.' },
+    title: 'Play Matching Pairs',
+    text: 'Choose Matching pairs on the Study tab and select one deck. Questions appear on the left and shuffled answers on the right. At least five applicable cards are needed; tap one from each column to make a pair.' },
+  { ico: '✅', view: 'study',
+    title: 'Try Multiple Choice',
+    text: 'Choose Multiple choice and select one deck. Flashcard Flipper creates fresh answer choices from that deck each time. Bulleted answers become “Choose every correct answer” questions when enough choices are applicable.' },
   { ico: '🔍', view: 'study',
     title: 'Study across decks',
     text: 'Check multiple decks to study them together, or use the search box to study every matching card from all your decks at once.' },
@@ -1589,9 +1996,15 @@ const FAQ = [
   ['What does \u201cFlag for review\u201d do?',
    'While studying, tick \u201cFlag this card for review\u201d to mark tricky cards. Back on the Study picker, turn on \u201cOnly study flagged cards\u201d to drill just those.'],
   ['What is Reverse mode?',
-   'Turn on \u201cReverse\u201d in the Study picker to see the answer first and guess the question instead. Reverse applies to regular Study sessions only, not Tap matching pairs.'],
+   'Choose Flashcards in the Study picker, then turn on \u201cReverse\u201d to see the answer first and guess the question instead. Reverse applies only to Flashcards, not Matching Pairs or Multiple Choice.'],
   ['What is Tap matching pair?',
-   'Tap matching pairs is a game on the Study tab. Select exactly one deck, then tap \u201cTap matching pairs.\u201d Five questions appear in the left column and their shuffled answers appear in the right. Tap a question and its matching answer; correct pairs dim in green, while incorrect choices briefly change color and reset. The game uses only cards whose question and answer fit comfortably in the tiles, requires at least five qualifying cards, and never places repeated questions or repeated answers in the same round.'],
+   'Matching Pairs is a game on the Study tab. Choose Matching pairs and select exactly one deck. Five questions appear in the left column and their shuffled answers appear in the right. Tap a question and its matching answer; correct pairs dim in green, while incorrect choices briefly change color and reset.'],
+  ['Why are some cards applicable for Matching Pairs and others are not?',
+   'Matching Pairs uses compact tiles. A card is applicable when both its question and answer fit comfortably inside those tiles at the current screen and font size. Repeated questions or answers may also prevent otherwise applicable cards from appearing together. Every card remains available in Flashcards mode.'],
+  ['What is Multiple Choice?',
+   'Multiple Choice is a game on the Study tab. Choose Multiple choice and select exactly one deck. Each question receives a correct answer and newly shuffled distractors from other cards in that deck. When an answer contains multiple semicolon-separated bullet items, the game can ask you to choose every correct answer. Results include a score, replay, and an option to review missed questions.'],
+  ['Why are some cards applicable for Multiple Choice and others are not?',
+   'A card is applicable when its question and answer choices fit comfortably on the screen and the deck contains enough unique, applicable answers to create distractors. For \u201cChoose every correct answer\u201d questions, each bullet item and the generated choices must fit. Every card remains available in Flashcards mode.'],
   ['How does search work?',
    'The search box on the Study tab scans every card\u2019s question and answer across all decks, and studies the matches as a custom set.'],
   ['Can I add colors, shapes, or formatting to cards?',

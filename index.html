@@ -144,8 +144,26 @@
       <div id="deck-picker">
         <h2 class="head-with-flipper">
           <svg class="flipper-emblem" aria-hidden="true"><use href="#flipperMascot" /></svg>
-          Choose deck(s) to study or play
+          Choose how to study
         </h2>
+
+        <div id="study-mode-picker" class="study-mode-picker" role="radiogroup" aria-label="Study mode">
+          <button type="button" class="study-mode-option active" data-study-mode="flashcards"
+                  role="radio" aria-checked="true">
+            <span class="study-mode-icon" aria-hidden="true">↻</span>
+            <span><strong>Flashcards</strong><small>Flip cards at your own pace</small></span>
+          </button>
+          <button type="button" class="study-mode-option" data-study-mode="matching"
+                  role="radio" aria-checked="false">
+            <span class="study-mode-icon" aria-hidden="true">🧩</span>
+            <span><strong>Matching pairs</strong><small>Match five questions and answers</small></span>
+          </button>
+          <button type="button" class="study-mode-option" data-study-mode="multiple-choice"
+                  role="radio" aria-checked="false">
+            <span class="study-mode-icon" aria-hidden="true">✓</span>
+            <span><strong>Multiple choice</strong><small>Choose the correct answer or answers</small></span>
+          </button>
+        </div>
 
         <form id="search-form" class="search-row" role="search">
           <input id="search-input" type="search" inputmode="search"
@@ -155,7 +173,7 @@
         <p id="search-status" class="search-status"></p>
 
         <div class="deck-list-heading">
-          <p class="help">Or select one or more decks. Multiple decks are studied together.</p>
+          <p id="deck-selection-help" class="help">Select one or more decks. Multiple decks are studied together.</p>
           <button id="select-all-btn" class="btn small">Select all</button>
         </div>
         <ul id="deck-list" class="deck-list"></ul>
@@ -166,20 +184,15 @@
         <div id="picker-controls" class="controls-stack">
           <label id="only-flagged-row" class="toggle-row">
             <input type="checkbox" id="only-flagged" />
-            <span>Only study flagged cards</span>
+            <span>Only use flagged cards</span>
             <span id="flagged-total" class="deck-item-count"></span>
           </label>
           <label id="reverse-row" class="toggle-row">
             <input type="checkbox" id="reverse-mode" />
             <span>Reverse — show the answer, guess the question</span>
           </label>
-          <p class="picker-note">Reverse applies to Study only, not Tap matching pairs.</p>
-          <div class="controls study-actions">
-            <button id="start-study-btn" class="btn primary">Study</button>
-            <button id="start-match-btn" class="btn match-start-btn" disabled>Tap matching pairs</button>
-          </div>
-          <p id="match-eligibility" class="match-eligibility" aria-live="polite">
-            Select one deck to see how many short cards qualify.
+          <button id="start-mode-btn" class="btn primary start-mode-btn">Start Flashcards</button>
+          <p id="mode-eligibility" class="mode-eligibility hidden" aria-live="polite">
           </p>
         </div>
         <div id="hidden-decks" class="hidden-decks"></div>
@@ -245,6 +258,27 @@
           Match each question with its answer.
         </p>
         <div id="match-board" class="match-board" aria-label="Matching pairs"></div>
+      </div>
+
+      <!-- Multiple-choice game -->
+      <div id="choice-area" class="hidden">
+        <div class="study-top">
+          <button id="choice-back-to-decks" class="btn small">&#8249; Decks</button>
+          <span id="choice-deck-label" class="study-deck-label"></span>
+        </div>
+        <div class="study-mascot" aria-hidden="true">
+          <svg class="flipper-study"><use href="#flipperMascot" /></svg>
+        </div>
+        <div class="choice-heading">
+          <h2>Multiple choice</h2>
+          <span id="choice-progress" class="choice-progress"></span>
+        </div>
+        <p id="choice-instruction" class="choice-instruction">Choose one answer.</p>
+        <div id="choice-question" class="choice-question"></div>
+        <div id="choice-options" class="choice-options" aria-label="Answer choices"></div>
+        <p id="choice-status" class="choice-status" aria-live="polite"></p>
+        <button id="choice-check-btn" class="btn primary choice-action" disabled>Check answer</button>
+        <button id="choice-next-btn" class="btn primary choice-action hidden">Next question</button>
       </div>
     </section>
 
