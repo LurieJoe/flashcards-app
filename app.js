@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v39';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -42,6 +42,12 @@ let state = { decks: [], activeId: null };
 let studyDeckIds = [];   // decks chosen in the picker (multi-select)
 let studyCards = [];     // flattened cards for the current study session
 let reverseMode = false; // when true, show the answer and guess the question
+let matchRounds = [];    // conflict-free groups for the matching-pairs game
+let matchRoundIndex = 0;
+let matchFirstTile = null;
+let matchLocked = false;
+let matchRoundMatched = 0;
+let matchSessionToken = 0;
 let editOpenedOnce = false; // default Import tab to "My cards" on first open per session
 let order = [];
 let pos = 0;
@@ -540,9 +546,12 @@ document.getElementById('delete-deck-btn').addEventListener('click', () => {
 const deckPicker = document.getElementById('deck-picker');
 const deckListEl = document.getElementById('deck-list');
 const studyArea = document.getElementById('study-area');
+const matchArea = document.getElementById('match-area');
 
 function openDeckPicker() {
+  matchSessionToken++;
   studyArea.classList.add('hidden');
+  matchArea.classList.add('hidden');
   deckPicker.classList.remove('hidden');
   stopTimer();
   timerEl.classList.add('hidden');
@@ -635,6 +644,7 @@ function renderDeckList() {
 
   renderHiddenDecks(hiddenDecks);
   updateFlaggedTotal();
+  updateMatchEligibility();
 }
 
 // Touch swipe-left reveals the Hide button; tapping a revealed row closes it.
@@ -721,7 +731,11 @@ document.getElementById('select-all-btn').addEventListener('click', () => {
   const boxes = deckListEl.querySelectorAll('input[type=checkbox]:not(:disabled)');
   const allChecked = [...boxes].every(b => b.checked);
   boxes.forEach(b => { b.checked = !allChecked; });
+  updateMatchEligibility();
 });
+
+deckListEl.addEventListener('change', updateMatchEligibility);
+document.getElementById('only-flagged').addEventListener('change', updateMatchEligibility);
 
 document.getElementById('start-study-btn').addEventListener('click', () => {
   const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
@@ -731,6 +745,7 @@ document.getElementById('start-study-btn').addEventListener('click', () => {
 });
 
 document.getElementById('back-to-decks').addEventListener('click', openDeckPicker);
+document.getElementById('match-back-to-decks').addEventListener('click', openDeckPicker);
 
 // Search every deck's questions AND answers, then study the matches as a custom set.
 document.getElementById('search-form').addEventListener('submit', (e) => {
@@ -897,6 +912,329 @@ function renderRich(el, text) {
   el.innerHTML = renderInline(items.length ? items[0] : raw);
 }
 
+/* ---------- Study: matching-pairs game ---------- */
+const MATCH_SIZE = 5;
+const matchBoard = document.getElementById('match-board');
+const matchStatus = document.getElementById('match-status');
+const matchProgress = document.getElementById('match-progress');
+const matchStartBtn = document.getElementById('start-match-btn');
+const matchEligibility = document.getElementById('match-eligibility');
+let matchMeasureEl = null;
+
+function shuffled(items) {
+  const result = items.slice();
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function normalizeMatchValue(value) {
+  return String(value ?? '')
+    .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/\\;/g, ';')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function getMatchMeasureEl() {
+  if (matchMeasureEl) return matchMeasureEl;
+  matchMeasureEl = document.createElement('button');
+  matchMeasureEl.type = 'button';
+  matchMeasureEl.className = 'match-tile match-measurer';
+  matchMeasureEl.setAttribute('aria-hidden', 'true');
+  matchMeasureEl.tabIndex = -1;
+  document.body.appendChild(matchMeasureEl);
+  return matchMeasureEl;
+}
+
+function matchSideFits(text) {
+  const el = getMatchMeasureEl();
+  const contentWidth = Math.min(window.innerWidth || 320, 640);
+  el.style.width = `${Math.max(120, (contentWidth - 41) / 2)}px`;
+  renderRich(el, text);
+  return el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1;
+}
+
+function getMatchEligibleCards(cards) {
+  return cards.filter(card =>
+    normalizeMatchValue(card.q) &&
+    normalizeMatchValue(card.a) &&
+    matchSideFits(card.q) &&
+    matchSideFits(card.a));
+}
+
+function wrapMatchCards(cards) {
+  return cards.map((card, index) => ({
+    card,
+    id: `pair-${index}-${Math.random().toString(36).slice(2, 8)}`,
+    qKey: normalizeMatchValue(card.q),
+    aKey: normalizeMatchValue(card.a),
+  }));
+}
+
+// A round is a matching in a question-to-answer bipartite graph: no two
+// selected cards may share a visible question or answer.
+function pickConflictFreeGroup(cards, limit = MATCH_SIZE) {
+  const byQuestion = new Map();
+  for (const item of shuffled(cards)) {
+    if (!byQuestion.has(item.qKey)) byQuestion.set(item.qKey, []);
+    byQuestion.get(item.qKey).push(item);
+  }
+
+  const matchByAnswer = new Map();
+  const tryQuestion = (qKey, seenAnswers) => {
+    for (const item of shuffled(byQuestion.get(qKey) || [])) {
+      if (seenAnswers.has(item.aKey)) continue;
+      seenAnswers.add(item.aKey);
+      const current = matchByAnswer.get(item.aKey);
+      if (!current || tryQuestion(current.qKey, seenAnswers)) {
+        matchByAnswer.set(item.aKey, item);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (const qKey of shuffled([...byQuestion.keys()])) {
+    tryQuestion(qKey, new Set());
+    if (matchByAnswer.size >= limit) break;
+  }
+  return shuffled([...matchByAnswer.values()]).slice(0, limit);
+}
+
+function buildMatchRounds(cards) {
+  let remaining = wrapMatchCards(cards);
+  const rounds = [];
+  while (remaining.length >= MATCH_SIZE) {
+    const round = pickConflictFreeGroup(remaining);
+    if (round.length < MATCH_SIZE) break;
+    rounds.push(round);
+    const used = new Set(round.map(item => item.id));
+    remaining = remaining.filter(item => !used.has(item.id));
+  }
+  return rounds;
+}
+
+function selectedMatchSource() {
+  const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
+  if (ids.length !== 1) return { ids, deck: null, cards: [] };
+  const deck = state.decks.find(d => d.id === ids[0]);
+  if (!deck) return { ids, deck: null, cards: [] };
+  const onlyFlagged = document.getElementById('only-flagged').checked;
+  const cards = onlyFlagged ? deck.cards.filter(card => card.flagged) : deck.cards;
+  return { ids, deck, cards, onlyFlagged };
+}
+
+function updateMatchEligibility() {
+  const source = selectedMatchSource();
+  matchStartBtn.disabled = true;
+
+  if (source.ids.length === 0) {
+    matchEligibility.textContent = 'Select one deck to see how many short cards qualify.';
+    return;
+  }
+  if (source.ids.length > 1) {
+    matchEligibility.textContent = 'Choose exactly one deck for Matching Pairs.';
+    return;
+  }
+
+  const eligible = getMatchEligibleCards(source.cards);
+  const label = source.onlyFlagged ? 'flagged cards' : 'cards';
+  if (eligible.length < MATCH_SIZE) {
+    matchEligibility.textContent =
+      `${eligible.length} of ${source.cards.length} ${label} are short enough. At least 5 are needed.`;
+    return;
+  }
+
+  const rounds = buildMatchRounds(eligible);
+  if (!rounds.length) {
+    matchEligibility.textContent =
+      `${eligible.length} short cards qualify, but repeated questions or answers prevent a 5-pair round.`;
+    return;
+  }
+
+  matchStartBtn.disabled = false;
+  matchEligibility.textContent =
+    `${eligible.length} of ${source.cards.length} ${label} are short enough. ` +
+    'Matching Pairs uses complete groups of 5.';
+}
+
+function startMatchGame() {
+  const source = selectedMatchSource();
+  if (!source.deck) return;
+  const eligible = getMatchEligibleCards(source.cards);
+  const rounds = buildMatchRounds(eligible);
+  if (eligible.length < MATCH_SIZE || !rounds.length) {
+    updateMatchEligibility();
+    return;
+  }
+
+  const playableCount = rounds.length * MATCH_SIZE;
+  studyDeckIds = source.ids;
+  matchRounds = rounds;
+  matchRoundIndex = 0;
+  matchSessionToken++;
+  deckPicker.classList.add('hidden');
+  studyArea.classList.add('hidden');
+  matchArea.classList.remove('hidden');
+  stopTimer();
+  timerEl.classList.add('hidden');
+  document.getElementById('match-deck-label').textContent =
+    `${source.deck.name} · ${playableCount} short cards`;
+  renderMatchRound();
+}
+
+function renderMatchRound() {
+  const round = matchRounds[matchRoundIndex];
+  matchFirstTile = null;
+  matchLocked = false;
+  matchRoundMatched = 0;
+  matchBoard.innerHTML = '';
+  matchStatus.textContent = 'Match each question with its answer.';
+  matchProgress.textContent = `Round ${matchRoundIndex + 1} of ${matchRounds.length} · 0 / ${round.length}`;
+
+  const questionTiles = shuffled(round.map(item => ({ item, side: 'q', text: item.card.q })));
+  const answerTiles = shuffled(round.map(item => ({ item, side: 'a', text: item.card.a })));
+  const questionHead = document.createElement('div');
+  questionHead.className = 'match-column-head';
+  questionHead.textContent = 'Question';
+  const answerHead = document.createElement('div');
+  answerHead.className = 'match-column-head';
+  answerHead.textContent = 'Answer';
+  matchBoard.appendChild(questionHead);
+  matchBoard.appendChild(answerHead);
+
+  for (let i = 0; i < round.length; i++) {
+    for (const tile of [questionTiles[i], answerTiles[i]]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'match-tile';
+      button.dataset.pairId = tile.item.id;
+      button.dataset.side = tile.side;
+      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-label', `${tile.side === 'q' ? 'Question' : 'Answer'}: ${normalizeMatchValue(tile.text)}`);
+      renderRich(button, tile.text);
+      button.addEventListener('click', () => chooseMatchTile(button));
+      matchBoard.appendChild(button);
+    }
+  }
+}
+
+function chooseMatchTile(tile) {
+  if (matchLocked || tile.classList.contains('matched')) return;
+  if (matchFirstTile === tile) {
+    tile.classList.remove('selected');
+    tile.setAttribute('aria-pressed', 'false');
+    matchFirstTile = null;
+    return;
+  }
+
+  tile.classList.add('selected');
+  tile.setAttribute('aria-pressed', 'true');
+  if (!matchFirstTile) {
+    matchFirstTile = tile;
+    return;
+  }
+
+  const first = matchFirstTile;
+  matchFirstTile = null;
+  matchLocked = true;
+  const token = matchSessionToken;
+  const correct = first.dataset.pairId === tile.dataset.pairId &&
+    first.dataset.side !== tile.dataset.side;
+
+  if (correct) {
+    playCorrectMatch();
+    matchRoundMatched++;
+    matchStatus.textContent = 'Correct pair!';
+    matchProgress.textContent =
+      `Round ${matchRoundIndex + 1} of ${matchRounds.length} · ${matchRoundMatched} / ${matchRounds[matchRoundIndex].length}`;
+    first.classList.remove('selected');
+    tile.classList.remove('selected');
+    first.classList.add('matched');
+    tile.classList.add('matched');
+    first.disabled = true;
+    tile.disabled = true;
+
+    const roundComplete = matchRoundMatched === matchRounds[matchRoundIndex].length;
+    setTimeout(() => {
+      if (token !== matchSessionToken) return;
+      if (roundComplete) {
+        matchRoundIndex++;
+        if (matchRoundIndex < matchRounds.length) renderMatchRound();
+        else renderMatchComplete();
+      } else {
+        matchLocked = false;
+        matchStatus.textContent = 'Keep going!';
+      }
+    }, roundComplete ? 700 : 350);
+    return;
+  }
+
+  playIncorrectMatch();
+  matchStatus.textContent = 'Not a match. Try again.';
+  first.classList.add('wrong');
+  tile.classList.add('wrong');
+  setTimeout(() => {
+    if (token !== matchSessionToken) return;
+    for (const item of [first, tile]) {
+      item.classList.remove('selected', 'wrong');
+      item.setAttribute('aria-pressed', 'false');
+    }
+    matchLocked = false;
+  }, 650);
+}
+
+function renderMatchComplete() {
+  matchStatus.textContent = '';
+  matchProgress.textContent = 'Complete';
+  matchBoard.innerHTML = '';
+  const complete = document.createElement('div');
+  complete.className = 'match-complete';
+  complete.innerHTML =
+    `<h3>All pairs matched!</h3>` +
+    `<p>You completed ${matchRounds.reduce((total, round) => total + round.length, 0)} cards.</p>`;
+  const again = document.createElement('button');
+  again.type = 'button';
+  again.className = 'btn primary';
+  again.textContent = 'Play again';
+  again.addEventListener('click', startMatchGame);
+  complete.appendChild(again);
+  matchBoard.appendChild(complete);
+}
+
+matchStartBtn.addEventListener('click', startMatchGame);
+let matchResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(matchResizeTimer);
+  matchResizeTimer = setTimeout(() => {
+    if (!deckPicker.classList.contains('hidden')) {
+      updateMatchEligibility();
+      return;
+    }
+    if (matchArea.classList.contains('hidden')) return;
+    if (matchRoundIndex >= matchRounds.length) return;
+    const stillFits = matchRounds.slice(matchRoundIndex).every(round =>
+      round.every(item => matchSideFits(item.card.q) && matchSideFits(item.card.a)));
+    if (stillFits) return;
+
+    const source = selectedMatchSource();
+    const eligible = source.deck ? getMatchEligibleCards(source.cards) : [];
+    if (buildMatchRounds(eligible).length) {
+      startMatchGame();
+      toast('Matching Pairs restarted to fit the new screen size.');
+    } else {
+      openDeckPicker();
+      toast('Fewer than 5 cards fit at this screen size.');
+    }
+  }, 150);
+});
+
 function buildOrder(shuffle) {
   order = studyCards.map((_, i) => i);
   if (shuffle) {
@@ -963,27 +1301,43 @@ const PREF = {
 };
 function prefBool(key, def) { const v = localStorage.getItem(key); return v === null ? def : v === '1'; }
 
-/* ---- Sound: a soft two-tone "ding" via Web Audio (no asset, offline) ---- */
+/* ---- Sound: synthesized cues via Web Audio (no assets, works offline) ---- */
 let audioCtx = null;
-function playDing() {
+function playNotes(notes, type = 'sine', volume = 0.25) {
   if (!prefBool(PREF.sound, false)) return;
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const now = audioCtx.currentTime;
+    const lastNote = notes[notes.length - 1];
     const gain = audioCtx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + lastNote.at + 0.24);
     gain.connect(audioCtx.destination);
     const osc = audioCtx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, now);       // A5
-    osc.frequency.setValueAtTime(1318.5, now + 0.09); // E6
+    osc.type = type;
+    for (const note of notes) osc.frequency.setValueAtTime(note.frequency, now + note.at);
     osc.connect(gain);
     osc.start(now);
-    osc.stop(now + 0.36);
+    osc.stop(now + lastNote.at + 0.25);
   } catch (e) { /* ignore audio errors */ }
+}
+function playDing() {
+  playNotes([{ frequency: 880, at: 0 }, { frequency: 1318.5, at: 0.09 }]);
+}
+function playCorrectMatch() {
+  playNotes([
+    { frequency: 659.25, at: 0 },
+    { frequency: 783.99, at: 0.08 },
+    { frequency: 1046.5, at: 0.16 },
+  ], 'sine', 0.24);
+}
+function playIncorrectMatch() {
+  playNotes([
+    { frequency: 246.94, at: 0 },
+    { frequency: 174.61, at: 0.14 },
+  ], 'triangle', 0.16);
 }
 
 /* ---- Timer: stopwatch during study, tap to pause/resume ---- */

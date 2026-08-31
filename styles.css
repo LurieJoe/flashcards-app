@@ -853,6 +853,114 @@ main {
 .btn:active { transform: scale(0.97); }
 .btn.primary { background: var(--primary); color: #fff; }
 .btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.btn:disabled { opacity: 0.48; cursor: not-allowed; transform: none; }
+
+/* Matching-pairs game */
+.match-launch {
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+  padding: 12px;
+}
+.match-start-btn {
+  width: 100%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+}
+.match-eligibility {
+  min-height: 1.2em;
+  margin: 8px 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.match-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 2px;
+}
+.match-heading h2 { margin: 0; font-size: calc(21px * var(--fscale)); }
+.match-progress { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.match-status {
+  min-height: 1.4em;
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.match-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.match-column-head {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.match-tile {
+  min-width: 0;
+  height: 76px;
+  padding: 7px 9px;
+  border: 2px solid var(--surface-2);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(15px * var(--fscale));
+  font-weight: 600;
+  line-height: 1.18;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, opacity .2s ease, transform .15s ease;
+}
+.match-tile:disabled { color: var(--text); }
+.match-tile .card-shape { max-width: 58px; max-height: 58px; margin: 0 auto; }
+.match-tile.selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface));
+  transform: scale(1.02);
+}
+.match-tile.wrong {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+  animation: match-shake .28s ease;
+}
+.match-tile.matched {
+  border-color: #22c55e;
+  background: color-mix(in srgb, #22c55e 20%, var(--surface));
+  opacity: 0.48;
+  filter: saturate(0.65);
+  pointer-events: none;
+}
+.match-complete {
+  grid-column: 1 / -1;
+  padding: 36px 18px;
+  border: 1px solid var(--surface-2);
+  border-radius: 16px;
+  background: var(--surface);
+  text-align: center;
+}
+.match-complete h3 { margin: 0 0 8px; font-size: calc(24px * var(--fscale)); }
+.match-complete p { color: var(--muted); }
+.match-complete .btn { width: 100%; margin-top: 10px; }
+.match-measurer {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+@keyframes match-shake {
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+}
 
 /* Edit */
 .help, .help code {

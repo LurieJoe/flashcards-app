@@ -144,7 +144,7 @@
       <div id="deck-picker">
         <h2 class="head-with-flipper">
           <svg class="flipper-emblem" aria-hidden="true"><use href="#flipperMascot" /></svg>
-          Choose deck(s) to study
+          Choose deck(s) to study or play
         </h2>
 
         <form id="search-form" class="search-row" role="search">
@@ -173,6 +173,12 @@
           <div class="controls">
             <button id="select-all-btn" class="btn">Select all</button>
             <button id="start-study-btn" class="btn primary">Study</button>
+          </div>
+          <div class="match-launch">
+            <button id="start-match-btn" class="btn match-start-btn" disabled>Tap matching pairs</button>
+            <p id="match-eligibility" class="match-eligibility" aria-live="polite">
+              Select one deck to see how many short cards qualify.
+            </p>
           </div>
         </div>
         <div id="hidden-decks" class="hidden-decks"></div>
@@ -219,6 +225,22 @@
           <button id="shuffle-btn" class="btn">Shuffle</button>
           <button id="next-btn" class="btn">Next &#8594;</button>
         </div>
+      </div>
+
+      <!-- Matching-pairs game -->
+      <div id="match-area" class="hidden">
+        <div class="study-top">
+          <button id="match-back-to-decks" class="btn small">&#8249; Decks</button>
+          <span id="match-deck-label" class="study-deck-label"></span>
+        </div>
+        <div class="match-heading">
+          <h2>Tap the matching pairs</h2>
+          <span id="match-progress" class="match-progress"></span>
+        </div>
+        <p id="match-status" class="match-status" aria-live="polite">
+          Match each question with its answer.
+        </p>
+        <div id="match-board" class="match-board" aria-label="Matching pairs"></div>
       </div>
     </section>
 
@@ -319,7 +341,7 @@
         <h3>Preferences</h3>
         <label class="toggle-row">
           <input type="checkbox" id="pref-sound" />
-          <span>Sound effects (a soft “ding” when you flip a card)</span>
+          <span>Sound effects (different cues for flips, correct pairs, and incorrect matches)</span>
         </label>
         <label class="toggle-row">
           <input type="checkbox" id="pref-timer" />

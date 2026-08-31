@@ -57,6 +57,15 @@ Three tabs — **Home**, **Study**, and **Import**:
   - First pick **one or more decks** from a checklist — **multi-select** studies the
     selected decks together. Empty decks are disabled; "Select all" is available.
   - Tap a card to flip; swipe or use Prev/Next; **Shuffle** to randomize.
+  - **Tap matching pairs:** select one deck and play with five short cards at a
+    time. The app measures both sides against the phone-sized tiles, excludes
+    cards whose question or answer is too long, and enables the game only when
+    at least five cards qualify. Questions stay in the left column and answers
+    stay in the right, with each column shuffled independently. Repeated
+    questions or answers are kept out of the same round; matched pairs remain
+    visible in a dimmed green state, and correct and incorrect choices use
+    different sounds when sound effects are enabled. Every round contains
+    exactly five pairs; extra cards are reshuffled into a later play.
   - **Flag for review:** each card has a **⚑ Flag this card for review** checkbox.
     Flags are saved per card. The deck picker shows a **⚑ count** per deck, and an
     **"Only study flagged cards"** toggle lets you drill just the flagged ones across
