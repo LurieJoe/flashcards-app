@@ -536,6 +536,15 @@ main {
   font-weight: 600;
 }
 .gen-topics { color: var(--muted); font-size: 12px; margin: 10px 0 0; line-height: 1.5; }
+.deck-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.deck-list-heading .help { margin: 0; }
+.deck-list-heading .btn { white-space: nowrap; }
 .deck-list {
   list-style: none;
   padding: 0;
@@ -698,6 +707,12 @@ main {
 .toggle-row input[type=checkbox] { width: 20px; height: 20px; accent-color: #f59e0b; flex: 0 0 auto; }
 .toggle-row span:first-of-type { flex: 1; }
 .toggle-row.disabled { opacity: 0.5; cursor: default; }
+.picker-note {
+  margin: -5px 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
 
 .deck-item-flag {
   flex: 0 0 auto;
@@ -856,20 +871,14 @@ main {
 .btn:disabled { opacity: 0.48; cursor: not-allowed; transform: none; }
 
 /* Matching-pairs game */
-.match-launch {
-  background: var(--surface);
-  border: 1px solid var(--surface-2);
-  border-radius: 12px;
-  padding: 12px;
-}
+.study-actions .btn { min-width: 0; padding-left: 9px; padding-right: 9px; }
 .match-start-btn {
-  width: 100%;
   background: linear-gradient(135deg, var(--primary), var(--primary-2));
   color: #fff;
 }
 .match-eligibility {
   min-height: 1.2em;
-  margin: 8px 2px 0;
+  margin: -4px 2px 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.35;

@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v39';
+const APP_VERSION = 'v40';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -1436,7 +1436,10 @@ const TIPS = [
     text: 'Tick “Flag this card for review” while studying. Back on the Study picker, turn on “Only study flagged cards” to run just those.' },
   { ico: '🔄', view: 'study',
     title: 'Reverse mode',
-    text: 'In the Study picker, turn on “Reverse” to see the answer first and guess the question instead.' },
+    text: 'In the Study picker, turn on “Reverse” to see the answer first and guess the question instead. Reverse applies to regular Study sessions, not Tap matching pairs.' },
+  { ico: '🧩', view: 'study',
+    title: 'Play Tap matching pairs',
+    text: 'Select one deck on the Study tab, then tap “Tap matching pairs.” Questions appear on the left and shuffled answers on the right. At least five short cards must qualify; tap one from each column to make a pair.' },
   { ico: '🔍', view: 'study',
     title: 'Study across decks',
     text: 'Check multiple decks to study them together, or use the search box to study every matching card from all your decks at once.' },
@@ -1586,7 +1589,9 @@ const FAQ = [
   ['What does \u201cFlag for review\u201d do?',
    'While studying, tick \u201cFlag this card for review\u201d to mark tricky cards. Back on the Study picker, turn on \u201cOnly study flagged cards\u201d to drill just those.'],
   ['What is Reverse mode?',
-   'Turn on \u201cReverse\u201d in the Study picker to see the answer first and guess the question instead.'],
+   'Turn on \u201cReverse\u201d in the Study picker to see the answer first and guess the question instead. Reverse applies to regular Study sessions only, not Tap matching pairs.'],
+  ['What is Tap matching pair?',
+   'Tap matching pairs is a game on the Study tab. Select exactly one deck, then tap \u201cTap matching pairs.\u201d Five questions appear in the left column and their shuffled answers appear in the right. Tap a question and its matching answer; correct pairs dim in green, while incorrect choices briefly change color and reset. The game uses only cards whose question and answer fit comfortably in the tiles, requires at least five qualifying cards, and never places repeated questions or repeated answers in the same round.'],
   ['How does search work?',
    'The search box on the Study tab scans every card\u2019s question and answer across all decks, and studies the matches as a custom set.'],
   ['Can I add colors, shapes, or formatting to cards?',

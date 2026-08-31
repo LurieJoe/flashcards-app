@@ -154,7 +154,10 @@
         </form>
         <p id="search-status" class="search-status"></p>
 
-        <p class="help">Or select one or more decks. Multiple decks are studied together.</p>
+        <div class="deck-list-heading">
+          <p class="help">Or select one or more decks. Multiple decks are studied together.</p>
+          <button id="select-all-btn" class="btn small">Select all</button>
+        </div>
         <ul id="deck-list" class="deck-list"></ul>
         <div id="picker-empty" class="empty hidden">
           <p>You don't have any cards yet.</p>
@@ -170,16 +173,14 @@
             <input type="checkbox" id="reverse-mode" />
             <span>Reverse — show the answer, guess the question</span>
           </label>
-          <div class="controls">
-            <button id="select-all-btn" class="btn">Select all</button>
+          <p class="picker-note">Reverse applies to Study only, not Tap matching pairs.</p>
+          <div class="controls study-actions">
             <button id="start-study-btn" class="btn primary">Study</button>
-          </div>
-          <div class="match-launch">
             <button id="start-match-btn" class="btn match-start-btn" disabled>Tap matching pairs</button>
-            <p id="match-eligibility" class="match-eligibility" aria-live="polite">
-              Select one deck to see how many short cards qualify.
-            </p>
           </div>
+          <p id="match-eligibility" class="match-eligibility" aria-live="polite">
+            Select one deck to see how many short cards qualify.
+          </p>
         </div>
         <div id="hidden-decks" class="hidden-decks"></div>
       </div>
