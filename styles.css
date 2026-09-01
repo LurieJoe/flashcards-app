@@ -508,15 +508,14 @@ main {
   padding: 14px;
   margin-bottom: 14px;
 }
-.generator h3 { margin: 0 0 6px; font-size: 16px; }
+.generator h3 { margin: 0 0 10px; font-size: 16px; }
 .gen-row {
   display: flex;
   gap: 8px;
-  margin-top: 8px;
   flex-wrap: wrap;
 }
 #gen-topic {
-  flex: 1 1 140px;
+  flex: 1 1 180px;
   min-width: 0;
   background: var(--bg);
   color: var(--text);
@@ -535,7 +534,6 @@ main {
   font-size: 15px;
   font-weight: 600;
 }
-.gen-topics { color: var(--muted); font-size: 12px; margin: 10px 0 0; line-height: 1.5; }
 .deck-list-heading {
   display: flex;
   align-items: center;
@@ -1181,10 +1179,43 @@ textarea {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 4px;
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 8px;
 }
 .import-row .btn { flex: 0 0 auto; }
 .import-hint { color: var(--muted); font-size: 13px; }
+#gen-status { margin: 8px 0 0; }
+#gen-status:empty,
+#edit-status:empty { display: none; }
+
+.manual-editor-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  text-align: left;
+}
+.manual-editor-chevron {
+  font-size: 20px;
+  line-height: 1;
+  transition: transform .2s ease;
+}
+.manual-editor-toggle[aria-expanded="true"] .manual-editor-chevron {
+  transform: rotate(180deg);
+}
+.manual-editor {
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 8px;
+}
+.manual-editor .help:first-child { margin-top: 0; }
+.manual-editor .count { margin-bottom: 0; }
 
 .status {
   min-height: 20px;

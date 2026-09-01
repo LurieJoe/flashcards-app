@@ -16,12 +16,16 @@ Three tabs — **Home**, **Study**, and **Import**:
   top-left corner (see Themes below).
 - **Multiple decks:** create, rename, delete, and switch decks. Each imported file
   becomes its own deck. Cards are saved per-deck.
-- **Auto-create a deck (Import tab):** type a topic (e.g. *Animals*, *World Flags*,
-  *Spanish*) and pick a card count (10/25/50/All) to instantly build a deck from a
+- **Auto-create a deck (Import tab):** choose a built-in deck (e.g. *Animals*,
+  *World Flags*, or *Spanish Vocabulary*) and pick a card count (10/25/50/All) to
+  instantly build a deck from a
   bundled knowledge base — generated **on-device**, nothing leaves your phone. Built-in
   packs: Animals, World Capitals, World Flags, US State Capitals, US Presidents, Multiplication Tables,
   Chemical Elements, Spanish, French, Portuguese, Planets & Space, US Civics Basics,
   Colors, and Shapes.
+- **Streamlined Import tab:** choose built-in decks from a dropdown, import a supported
+  file, or expand **Create a deck** only when you need the manual card editor and its
+  formatting instructions.
 - **World Flags:** creates up to 195 visual-recognition cards with a flag emoji on the
   question side and the country name on the answer side. Platforms without native flag
   emoji support use bundled SVG fallbacks, so the deck remains consistent and fully

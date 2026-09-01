@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v45';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -480,6 +480,7 @@ function showView(name) {
     renderDeckOptions();
     document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
     updateCount();
+    setManualEditorOpen(false);
   }
   maybeNavTip(name);
 }
@@ -499,6 +500,23 @@ document.getElementById('settings-btn').addEventListener('click', openSettings);
 document.getElementById('settings-back').addEventListener('click', () => showView('home'));
 
 /* ---------- Import/Create: deck management ---------- */
+const manualEditor = document.getElementById('manual-editor');
+const manualEditorToggle = document.getElementById('manual-editor-toggle');
+
+function setManualEditorOpen(open) {
+  if (!manualEditor || !manualEditorToggle) return;
+  manualEditor.classList.toggle('hidden', !open);
+  manualEditorToggle.setAttribute('aria-expanded', String(open));
+}
+
+if (manualEditorToggle) {
+  manualEditorToggle.classList.remove('hidden');
+  setManualEditorOpen(false);
+  manualEditorToggle.addEventListener('click', () => {
+    setManualEditorOpen(manualEditorToggle.getAttribute('aria-expanded') !== 'true');
+  });
+}
+
 function renderDeckOptions() {
   deckSelect.innerHTML = '';
   for (const d of state.decks) {
@@ -527,6 +545,7 @@ document.getElementById('new-deck-btn').addEventListener('click', () => {
   renderDeckOptions();
   document.getElementById('bulk-input').value = '';
   updateCount();
+  setManualEditorOpen(true);
 });
 
 document.getElementById('rename-deck-btn').addEventListener('click', () => {
@@ -2183,9 +2202,14 @@ document.getElementById('save-btn').addEventListener('click', () => {
 
 /* ---------- Auto-generate a deck from a topic (offline packs) ---------- */
 (function initGenerator() {
-  const listEl = document.getElementById('gen-topic-list');
-  if (listEl && window.TOPIC_PACKS) {
-    listEl.textContent = window.TOPIC_PACKS.map(p => p.name).join(' · ');
+  const topicEl = document.getElementById('gen-topic');
+  if (topicEl && topicEl.tagName === 'SELECT' && topicEl.options.length <= 1 && window.TOPIC_PACKS) {
+    for (const pack of window.TOPIC_PACKS) {
+      const option = document.createElement('option');
+      option.value = pack.name;
+      option.textContent = pack.name;
+      topicEl.appendChild(option);
+    }
   }
   const form = document.getElementById('gen-form');
   if (!form) return;
@@ -2193,9 +2217,9 @@ document.getElementById('save-btn').addEventListener('click', () => {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const topic = document.getElementById('gen-topic').value.trim();
+    const topic = topicEl.value.trim();
     const count = parseInt(document.getElementById('gen-count').value, 10) || 0;
-    if (!topic) { setGenStatus('Type a topic first (e.g. Animals).', false); return; }
+    if (!topic) { setGenStatus('Choose a built-in deck first.', false); return; }
 
     const pack = window.matchTopic(topic);
     if (!pack) {
@@ -2219,7 +2243,7 @@ document.getElementById('save-btn').addEventListener('click', () => {
       ? ` (that pack only has ${cards.length})`
       : '';
     setGenStatus(`Created “${name}” with ${cards.length} card${cards.length === 1 ? '' : 's'}${capped}. Ready to study!`);
-    document.getElementById('gen-topic').value = '';
+    topicEl.value = '';
   });
 
   function setGenStatus(msg, ok = true) {

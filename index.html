@@ -296,7 +296,7 @@
     <section id="edit-view" class="view">
       <h2 class="head-with-flipper">
         <svg class="flipper-emblem" aria-hidden="true"><use href="#flipperMascot" /></svg>
-        Import &amp; create
+        Import &amp; Create
       </h2>
       <div class="deck-bar">
         <select id="deck-select" aria-label="Select deck to edit"></select>
@@ -307,11 +307,24 @@
 
       <section class="generator">
         <h3>✨ Auto-create a deck</h3>
-        <p class="help">Type a topic and pick how many cards. Built-in packs are generated
-           on your device — nothing leaves your phone.</p>
         <form id="gen-form" class="gen-row">
-          <input id="gen-topic" type="text" placeholder="e.g. Animals, World Flags, Spanish"
-                 aria-label="Topic" autocomplete="off" />
+          <select id="gen-topic" aria-label="Built-in deck">
+            <option value="">Choose a deck</option>
+            <option value="Animals">Animals</option>
+            <option value="US State Capitals">US State Capitals</option>
+            <option value="World Capitals">World Capitals</option>
+            <option value="World Flags">World Flags</option>
+            <option value="US Presidents">US Presidents</option>
+            <option value="Multiplication Tables">Multiplication Tables</option>
+            <option value="Chemical Elements">Chemical Elements</option>
+            <option value="Spanish Vocabulary">Spanish Vocabulary</option>
+            <option value="French Vocabulary">French Vocabulary</option>
+            <option value="Portuguese Vocabulary">Portuguese Vocabulary</option>
+            <option value="Planets &amp; Space">Planets &amp; Space</option>
+            <option value="US Civics Basics">US Civics Basics</option>
+            <option value="Colors">Colors</option>
+            <option value="Shapes">Shapes</option>
+          </select>
           <select id="gen-count" aria-label="Number of cards">
             <option value="10">10</option>
             <option value="25" selected>25</option>
@@ -321,36 +334,42 @@
           <button type="submit" id="gen-btn" class="btn primary">Generate</button>
         </form>
         <p id="gen-status" class="status"></p>
-        <p class="gen-topics">Available: <span id="gen-topic-list"></span></p>
       </section>
 
       <div class="import-row">
-        <label class="btn" for="file-input">Import file&hellip;</label>
+        <label class="btn" for="file-input">Import file</label>
         <input id="file-input" type="file" accept=".docx,.json,.txt,.csv" hidden />
         <span class="import-hint">.docx, .csv, .txt, or a deck .json</span>
       </div>
 
-      <p class="help">
-        Or type one card per line as <code>question | answer</code>
-        (also accepts <code>question - answer</code>, a tab, or CSV).
-      </p>
-      <p class="help">
-        Formatting (optional): <code>**bold**</code>, <code>*italic*</code>,
-        colored text <code>{{c:red|text}}</code>, and shapes
-        <code>{{shape:circle|#4f46e5|120}}</code>. Separate items with a
-        <code>;</code> to make a bulleted list (e.g. <code>Red; Blue; Yellow</code>).
-        Try the Auto-create <strong>Colors</strong> or <strong>Shapes</strong> decks
-        for examples.
-      </p>
-      <textarea id="bulk-input" rows="10" spellcheck="false"
-        placeholder="What is the capital of France? | Paris&#10;2 + 2 | 4&#10;Largest planet | Jupiter"></textarea>
-      <div class="edit-actions">
-        <button id="save-btn" class="btn primary">Save cards</button>
-        <button id="export-btn" class="btn">Export deck</button>
-        <button id="clear-btn" class="btn danger">Clear</button>
-      </div>
       <p id="edit-status" class="status"></p>
-      <p class="count"><span id="card-count">0</span> cards in this deck</p>
+
+      <button type="button" id="manual-editor-toggle" class="btn manual-editor-toggle hidden"
+              aria-expanded="false" aria-controls="manual-editor">
+        <span>Create a deck</span><span class="manual-editor-chevron" aria-hidden="true">&#8964;</span>
+      </button>
+      <section id="manual-editor" class="manual-editor">
+        <p class="help">
+          Type one card per line as <code>question | answer</code>
+          (also accepts <code>question - answer</code>, a tab, or CSV).
+        </p>
+        <p class="help">
+          Formatting (optional): <code>**bold**</code>, <code>*italic*</code>,
+          colored text <code>{{c:red|text}}</code>, and shapes
+          <code>{{shape:circle|#4f46e5|120}}</code>. Separate items with a
+          <code>;</code> to make a bulleted list (e.g. <code>Red; Blue; Yellow</code>).
+          Try the Auto-create <strong>Colors</strong> or <strong>Shapes</strong> decks
+          for examples.
+        </p>
+        <textarea id="bulk-input" rows="10" spellcheck="false"
+          placeholder="What is the capital of France? | Paris&#10;2 + 2 | 4&#10;Largest planet | Jupiter"></textarea>
+        <div class="edit-actions">
+          <button id="save-btn" class="btn primary">Save cards</button>
+          <button id="export-btn" class="btn">Export deck</button>
+          <button id="clear-btn" class="btn danger">Clear</button>
+        </div>
+        <p class="count"><span id="card-count">0</span> cards in this deck</p>
+      </section>
     </section>
 
     <!-- SETTINGS VIEW -->
