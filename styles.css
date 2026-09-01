@@ -117,7 +117,7 @@ body {
 }
 .bulb-btn:active { background: var(--surface-2); }
 
-/* Home tips controls (replaces the old inline tip paragraphs) */
+/* Home startup-tip preference */
 .home-tips-controls {
   display: flex;
   flex-direction: column;
@@ -125,7 +125,6 @@ body {
   gap: 8px;
   margin-top: 18px;
 }
-.tips-open-btn { width: auto; }
 .see-all-btn { width: 100%; margin-bottom: 10px; }
 .tips-startup-row {
   display: flex;

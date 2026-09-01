@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'flashcards-v45';
+const CACHE = 'flashcards-v46';
 const FLAG_CODES = (
   'af al dz ad ao ag ar am au at az bs bh bd bb by be bz bj bt bo ba bw br bn bg bf bi ' +
   'cv kh cm ca cf td cl cn co km cg cd cr ci hr cu cy cz dk dj dm do ec eg sv gq er ee sz ' +
