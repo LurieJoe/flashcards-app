@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v43';
+const APP_VERSION = 'v44';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -894,7 +894,7 @@ const progressText = document.getElementById('progress-text');
 const progressFill = document.getElementById('progress-fill');
 const flagCheck = document.getElementById('flag-check');
 
-/* ---------- Rich card renderer (safe subset: bold/italic/colors/shapes) ---------- */
+/* ---------- Rich card renderer (safe subset: bold/italic/colors/shapes/flags) ---------- */
 const NAMED_COLORS = {
   red: '#ef4444', orange: '#f97316', yellow: '#eab308', green: '#22c55e',
   blue: '#3b82f6', indigo: '#4f46e5', purple: '#8b5cf6', violet: '#8b5cf6',
@@ -933,6 +933,44 @@ function shapeSVG(kind, color, size) {
   return `<svg class="card-shape" viewBox="0 0 100 100" width="${s}" height="${s}" ` +
     `fill="${fill}" stroke="rgba(120,120,120,0.35)" stroke-width="1" aria-hidden="true">${body}</svg>`;
 }
+function flagEmoji(code) {
+  const region = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(region)) return '';
+  return String.fromCodePoint(...[...region].map(letter => 0x1F1E6 + letter.charCodeAt(0) - 65));
+}
+let nativeFlagEmojiSupport = null;
+function supportsNativeFlagEmoji() {
+  if (nativeFlagEmojiSupport !== null) return nativeFlagEmojiSupport;
+  const canvas = document.createElement('canvas');
+  canvas.width = 96;
+  canvas.height = 72;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return (nativeFlagEmojiSupport = false);
+  ctx.font = '64px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  ctx.textBaseline = 'top';
+  ctx.fillText(flagEmoji('US'), 0, 0);
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let colored = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3] > 32 &&
+        Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) -
+        Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) > 28) {
+      colored++;
+    }
+  }
+  nativeFlagEmojiSupport = colored > 20;
+  return nativeFlagEmojiSupport;
+}
+function flagSpan(code) {
+  const region = String(code || '').trim().toUpperCase();
+  const emoji = flagEmoji(region);
+  if (!emoji) return escapeHtml(`{{flag:${code}}}`);
+  if (supportsNativeFlagEmoji()) {
+    return `<span class="card-flag card-flag-emoji" aria-hidden="true">${emoji}</span>`;
+  }
+  return `<img class="card-flag card-flag-image" src="./flags/${region.toLowerCase()}.svg" ` +
+    `width="160" height="120" alt="" aria-hidden="true">`;
+}
 function inlineMd(s) {
   return s
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -945,6 +983,9 @@ function renderToken(inner) {
   const type = head[0].trim().toLowerCase();
   if (type === 'shape') {
     return shapeSVG(head[1] || 'circle', segs[1] || '', segs[2] || '');
+  }
+  if (type === 'flag') {
+    return flagSpan(head[1] || '');
   }
   if (type === 'c' || type === 'color') {
     const color = safeColor(head[1] || '');
@@ -1251,7 +1292,7 @@ function renderMatchRound() {
       button.dataset.pairId = tile.item.id;
       button.dataset.side = tile.side;
       button.setAttribute('aria-pressed', 'false');
-      button.setAttribute('aria-label', `${tile.side === 'q' ? 'Question' : 'Answer'}: ${normalizeMatchValue(tile.text)}`);
+      button.setAttribute('aria-label', `${tile.side === 'q' ? 'Question' : 'Answer'}: ${accessibleRichText(tile.text)}`);
       renderRich(button, tile.text);
       button.addEventListener('click', () => chooseMatchTile(button));
       matchBoard.appendChild(button);
@@ -1448,6 +1489,7 @@ function choiceAnswerItems(card) {
 
 function accessibleRichText(text) {
   return String(text ?? '')
+    .replace(/\{\{flag:[A-Z]{2}\}\}/gi, 'Flag identification question')
     .replace(/\{\{shape:([^|}]+)\|([^|}]+)(?:\|[^}]*)?\}\}/gi, (_, shape, color) =>
       `${color} ${shape}`)
     .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
@@ -1712,8 +1754,14 @@ function showCard() {
   if (pos >= order.length) pos = 0;
   const card = studyCards[order[pos]];
   cardEl.classList.remove('flipped');
-  renderRich(questionEl, reverseMode ? card.a : card.q);
-  renderRich(answerEl, reverseMode ? card.q : card.a);
+  const frontText = reverseMode ? card.a : card.q;
+  const backText = reverseMode ? card.q : card.a;
+  renderRich(questionEl, frontText);
+  renderRich(answerEl, backText);
+  cardEl.dataset.frontAccessible = accessibleRichText(frontText);
+  cardEl.dataset.backAccessible = accessibleRichText(backText);
+  cardEl.setAttribute('aria-label',
+    `${reverseMode ? 'Answer' : 'Question'}: ${cardEl.dataset.frontAccessible}. Tap to flip.`);
   flagCheck.checked = !!card.flagged;
   progressText.textContent = `${pos + 1} / ${order.length}`;
   progressFill.style.width = `${((pos + 1) / order.length) * 100}%`;
@@ -1725,7 +1773,17 @@ flagCheck.addEventListener('change', () => {
   save();
 });
 
-function flip() { cardEl.classList.toggle('flipped'); playDing(); }
+function flip() {
+  const showingBack = cardEl.classList.toggle('flipped');
+  const side = showingBack
+    ? (reverseMode ? 'Question' : 'Answer')
+    : (reverseMode ? 'Answer' : 'Question');
+  const accessible = showingBack
+    ? cardEl.dataset.backAccessible
+    : cardEl.dataset.frontAccessible;
+  cardEl.setAttribute('aria-label', `${side}: ${accessible}. Tap to flip.`);
+  playDing();
+}
 function next() { pos = (pos + 1) % order.length; showCard(); }
 function prev() { pos = (pos - 1 + order.length) % order.length; showCard(); }
 
@@ -2065,7 +2123,7 @@ const FAQ = [
   ['How does search work?',
    'The search box on the Study tab scans every card\u2019s question and answer across all decks, and studies the matches as a custom set.'],
   ['Can I add colors, shapes, or formatting to cards?',
-   'Yes. Card text supports a small, safe formatting syntax: **bold** with double asterisks, *italic* with single asterisks, and line breaks. For color text use {{c:red|your text}} (a color name or #hex). To draw a filled shape use {{shape:circle|#4f46e5|120}} \u2014 the parts are shape, color, and size in pixels. Shapes include circle, square, rectangle, oval, triangle, diamond, pentagon, hexagon, star, and heart. Tip: the Auto-create \u201cColors\u201d and \u201cShapes\u201d decks are built with this syntax, so generate one to see examples.'],
+   'Yes. Card text supports a small, safe formatting syntax: **bold** with double asterisks, *italic* with single asterisks, and line breaks. For color text use {{c:red|your text}} (a color name or #hex). To draw a filled shape use {{shape:circle|#4f46e5|120}} \u2014 the parts are shape, color, and size in pixels. Shapes include circle, square, rectangle, oval, triangle, diamond, pentagon, hexagon, star, and heart. The Auto-create \u201cColors,\u201d \u201cShapes,\u201d and \u201cWorld Flags\u201d decks provide examples.'],
   ['How do I share a deck with a contact?',
    'On the Study tab, swipe a deck to the left (or hover it on a computer) to reveal Share, then tap Share. On iPhone or Android the share sheet opens so you can send the deck as a file via AirDrop, Messages, email, and more. On a computer the deck downloads as a .json file that you can then attach and send.'],
   ['How do I add a deck that was shared with me?',

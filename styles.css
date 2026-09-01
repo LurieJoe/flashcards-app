@@ -871,6 +871,18 @@ main {
   max-width: min(70vw, 260px);
   height: auto;
 }
+.card-flag {
+  display: inline-block;
+  max-width: min(70vw, 180px);
+  font-size: clamp(72px, 28vw, 150px);
+  line-height: 1;
+}
+.card-flag-image {
+  width: min(70vw, 180px);
+  height: auto;
+  max-height: 150px;
+  object-fit: contain;
+}
 .card-list { display: inline-block; text-align: left; margin: 0 auto; }
 .card-li { display: block; position: relative; padding-left: 1.15em; }
 .card-li + .card-li { margin-top: 0.28em; }
@@ -981,6 +993,8 @@ main {
 }
 .match-tile:disabled { color: var(--text); }
 .match-tile .card-shape { max-width: 58px; max-height: 58px; margin: 0 auto; }
+.match-tile .card-flag-emoji { font-size: 42px; }
+.match-tile .card-flag-image { width: 58px; max-height: 44px; }
 .match-tile.selected {
   border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 18%, var(--surface));
@@ -1055,6 +1069,8 @@ main {
   line-height: 1.3;
 }
 .choice-question .card-shape { max-width: 100px; max-height: 100px; margin: 0 auto; }
+.choice-question .card-flag-emoji { font-size: 76px; }
+.choice-question .card-flag-image { width: 100px; max-height: 75px; }
 .choice-options {
   display: grid;
   gap: 9px;
@@ -1079,6 +1095,8 @@ main {
   cursor: pointer;
 }
 .choice-option .card-shape { max-width: 52px; max-height: 52px; margin: 0 auto; }
+.choice-option .card-flag-emoji { font-size: 40px; }
+.choice-option .card-flag-image { width: 52px; max-height: 39px; }
 .choice-option.selected {
   border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 18%, var(--surface));
