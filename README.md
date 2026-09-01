@@ -18,11 +18,11 @@ Three tabs — **Home**, **Study**, and **Import**:
   becomes its own deck. Cards are saved per-deck.
 - **Auto-create a deck (Import tab):** choose a built-in deck (e.g. *Animals*,
   *World Flags*, or *Spanish Vocabulary*) and pick a card count (10/25/50/All) to
-  instantly build a deck from a
-  bundled knowledge base — generated **on-device**, nothing leaves your phone. Built-in
-  packs: Animals, World Capitals, World Flags, US State Capitals, US Presidents, Multiplication Tables,
-  Chemical Elements, Spanish, French, Portuguese, Planets & Space, US Civics Basics,
-  Colors, and Shapes.
+  instantly build a deck from a bundled knowledge base — generated **on-device**,
+  nothing leaves your phone. Built-in packs: Animals, World Capitals, World Flags,
+  US State Capitals, US Presidents, Multiplication Tables, Chemical Elements,
+  Spanish Vocabulary, French Vocabulary, Portuguese Vocabulary, Planets & Space,
+  US Civics Basics, Colors, and Shapes.
 - **Streamlined Import tab:** choose built-in decks from a dropdown, import a supported
   file, or expand **Create a deck** only when you need the manual card editor and its
   formatting instructions.
@@ -49,17 +49,17 @@ Three tabs — **Home**, **Study**, and **Import**:
   Your existing cards automatically become the first profile ("Me").
 - **Tips (💡):** tap the **lightbulb** next to the ⚙ gear for a quick set of tips —
   how to switch profiles, import a deck, flag and drill cards, tap to flip, and swipe
-  between cards.   Toggle **Show tips at startup** (on the Home screen or in Settings) to see a
-  different quick tip each time you open the app, and **Show tips as you navigate**
-  for short, in-context reminders as you move around.
-- **Import / create (Import tab):** tap **Import file…** to load cards from:
+  between cards. Toggle **Show tips at startup** (on the Home screen or in Settings)
+  to see a different quick tip each time you open the app, and **Show tips as you
+  navigate** for short, in-context reminders as you move around.
+- **Import / create (Import tab):** tap **Import file** to load cards from:
   - **`.docx`** (Word) — auto-detects 2-column tables, `question | answer` lines,
     `Q:`/`A:` labels, or alternating lines. Parsed fully offline on-device.
   - **`.csv`** / **`.txt`** — `question,answer` or any of the separators below.
   - **`.json`** — a deck exported from this app (round-trips name + cards).
 
-  Or type/paste a list, one card per line. Separators accepted:
-  `question | answer`, `question - answer`, a tab, or a comma (CSV).
+  Or expand **Create a deck** and type/paste a list, one card per line. Separators
+  accepted: `question | answer`, `question - answer`, a tab, or a comma (CSV).
   A header row like `Question,Answer` or `Word,Definition` is skipped automatically.
 - **Export deck:** save the current deck to a `.json` file (backup or share).
 - **Study (Study tab):**
@@ -67,24 +67,24 @@ Three tabs — **Home**, **Study**, and **Import**:
     Start button. Mode-specific controls appear only when relevant.
   - **Flashcards:** pick **one or more decks** from a checklist — **multi-select**
     studies the selected decks together. Empty decks are disabled; "Select all" is
-    available.
+    available. **Reverse** applies only to Flashcards; it is hidden in the game modes.
   - Tap a card to flip; swipe or use Prev/Next; **Shuffle** to randomize.
   - **Matching Pairs:** select one deck and play with five applicable cards at a
     time. The app measures both sides against the phone-sized tiles and enables
-    the game only when at least five cards are applicable. Questions stay in the left column and answers
-    stay in the right, with each column shuffled independently. Repeated
-    questions or answers are kept out of the same round; matched pairs remain
-    visible in a dimmed green state, and correct and incorrect choices use
-    different sounds when sound effects are enabled. Every round contains
-    exactly five pairs; extra cards are reshuffled into a later play.
+    the game only when at least five cards are applicable. Questions stay in the
+    left column and answers stay in the right, with each column shuffled
+    independently. Repeated questions or answers are kept out of the same round;
+    matched pairs remain visible in a dimmed green state, and correct and incorrect
+    choices use different sounds when sound effects are enabled. Every round
+    contains exactly five pairs; extra cards are reshuffled into a later play.
   - **Multiple Choice:** select one deck and answer applicable questions using
     choices generated locally from other answers in that deck. Questions and choices
     are measured at the current screen and font size. Single-answer cards receive
-    three unique distractors; semicolon-separated bulleted answers become
-    "Choose every correct answer" questions with multiple correct choices. Questions,
-    distractors, and answer order are randomized for each play. Correct and incorrect
-    answers have distinct feedback and sounds, and the results screen supports replay
-    or reviewing missed questions.
+    three unique distractors. Answers containing two to four semicolon-separated items
+    become "Choose every correct answer" questions with multiple correct choices and two
+    additional distractors. Questions, distractors, and answer order are randomized for
+    each play. Correct and incorrect answers have distinct feedback and sounds, and the
+    results screen supports replay or reviewing missed questions.
   - **Flag for review:** each card has a **⚑ Flag this card for review** checkbox.
     Flags are saved per card. The deck picker shows a **⚑ count** per deck, and an
     **"Only study flagged cards"** toggle lets you drill just the flagged ones across
@@ -195,6 +195,12 @@ running. Use Option A or B for true offline use.
 The app is served with a versioned service worker cache. After you deploy changes, fully
 close the home-screen app and reopen it (once or twice) to pick up the new version. Your
 decks, flags, and theme choice are preserved across updates.
+
+The current and immediately preceding HTML/JavaScript shells remain compatible during
+rollout. This prevents a temporary mixed-cache state from stopping startup while GitHub
+Pages and the service worker replace files at slightly different times. Compatibility
+controls may remain hidden in the HTML for this purpose; they do not appear in the
+current interface or modify locally stored decks.
 
 ## Why a PWA instead of a native `.ipa`?
 Native sideloading (AltStore/Sideloadly) needs an Xcode-built, signed `.ipa`. With a
