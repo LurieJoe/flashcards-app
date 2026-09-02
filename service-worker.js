@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'flashcards-v47';
+const CACHE = 'flashcards-v48';
 const FLAG_CODES = (
   'af al dz ad ao ag ar am au at az bs bh bd bb by be bz bj bt bo ba bw br bn bg bf bi ' +
   'cv kh cm ca cf td cl cn co km cg cd cr ci hr cu cy cz dk dj dm do ec eg sv gq er ee sz ' +
@@ -46,7 +46,7 @@ self.addEventListener('activate', event => {
 
 // Allow the page to trigger immediate activation of a waiting worker.
 self.addEventListener('message', event => {
-  if (event.data === 'activate-v47') self.skipWaiting();
+  if (event.data === 'activate-v47' || event.data === 'activate-v48') self.skipWaiting();
 });
 
 function isAppCode(url) {

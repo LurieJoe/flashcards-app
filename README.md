@@ -46,7 +46,8 @@ Three tabs — **Home**, **Study**, and **Import**:
   rich syntax above per item. Need a literal semicolon (grammar/punctuation cards)?
   Escape it as `\;`. The individual card editor also provides a structured **List**
   button with Add, Delete, Move up, and Move down controls, so phone keyboards never
-  need a bullet character.
+  need a bullet character. Lists display as real `•` bullet lines in the individual
+  editor while retaining semicolon-based storage for existing decks and exports.
 - **Profiles (local, no login):** tap the round **avatar in the top-right** to switch
   between profiles or add a new one. Each profile keeps its **own decks, appearance,
   font size, and color theme** — perfect for a shared iPad where each kid gets their

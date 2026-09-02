@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -936,6 +936,33 @@ function renderCardManager() {
   });
 }
 
+function setCardEditorText(textarea, storedText) {
+  const raw = String(storedText ?? '');
+  const items = splitListItems(raw).map(item => item.trim()).filter(Boolean);
+  const isList = items.length > 1;
+  textarea.value = isList ? items.map(item => `• ${item}`).join('\n') : (items[0] ?? raw);
+  textarea.dataset.listDisplay = isList ? '1' : '0';
+}
+
+function editorListItems(textarea) {
+  const lines = textarea.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (textarea.dataset.listDisplay === '1' ||
+      (lines.length > 1 && lines.every(line => line.startsWith('•')))) {
+    return lines.map(line => line.replace(/^•\s*/, '').trim()).filter(Boolean);
+  }
+  return textarea.value.trim() ? [textarea.value.trim()] : [];
+}
+
+function escapeListSeparators(text) {
+  return text.replace(/(^|[^\\]);/g, '$1\\;');
+}
+
+function cardEditorTextToStored(textarea) {
+  const items = editorListItems(textarea);
+  if (items.length > 1) return items.map(item => escapeListSeparators(item)).join('; ');
+  return items.length ? escapeListSeparators(items[0]) : '';
+}
+
 function openCardEditor(index = -1) {
   if (!cardEditorModal) return;
   const deck = managedDeck();
@@ -943,8 +970,8 @@ function openCardEditor(index = -1) {
   const card = index >= 0 ? deck.cards[index] : null;
   cardEditorIndex = card ? index : -1;
   cardEditorTitle.textContent = card ? 'Edit card' : 'Add card';
-  cardEditorQuestion.value = card ? card.q : '';
-  cardEditorAnswer.value = card ? card.a : '';
+  setCardEditorText(cardEditorQuestion, card ? card.q : '');
+  setCardEditorText(cardEditorAnswer, card ? card.a : '');
   cardEditorStatus.textContent = '';
   cardEditorDuplicate.classList.toggle('hidden', !card);
   cardEditorDelete.classList.toggle('hidden', !card);
@@ -1038,7 +1065,7 @@ function renderBulletEditor() {
 function openBulletEditor(textarea) {
   if (!bulletEditorModal || !bulletEditorList) return;
   bulletEditorTarget = textarea;
-  const items = splitListItems(textarea.value).map(item => item.trim()).filter(Boolean);
+  const items = editorListItems(textarea);
   bulletEditorItems = items.length ? items : ['', ''];
   if (bulletEditorItems.length === 1) bulletEditorItems.push('');
   bulletEditorTitle.textContent = `Edit ${textarea === cardEditorQuestion ? 'question' : 'answer'} list`;
@@ -1061,7 +1088,8 @@ function applyBulletEditor() {
     bulletEditorStatus.textContent = 'Add at least two list items.';
     return;
   }
-  bulletEditorTarget.value = items.map(item => item.replace(/;/g, '\\;')).join('; ');
+  bulletEditorTarget.value = items.map(item => `• ${item}`).join('\n');
+  bulletEditorTarget.dataset.listDisplay = '1';
   bulletEditorTarget.focus();
   closeBulletEditor();
 }
@@ -1102,8 +1130,8 @@ if (bulletEditorModal) {
 function saveCardEditor() {
   const deck = managedDeck();
   if (!deck) return;
-  const q = cardEditorQuestion.value.trim();
-  const a = cardEditorAnswer.value.trim();
+  const q = cardEditorTextToStored(cardEditorQuestion);
+  const a = cardEditorTextToStored(cardEditorAnswer);
   if (!q || !a) {
     cardEditorStatus.textContent = 'Enter both a question and an answer.';
     return;
@@ -2413,7 +2441,7 @@ const TIPS = [
     text: 'On the Study tab, swipe a deck left (or hover it on a computer) and tap Hide to remove it from your Study list without deleting it. Hidden decks appear at the bottom, ready to bring back.' },
   { ico: '📝', view: 'edit',
     title: 'Bulleted answers',
-    text: 'In the individual card editor, tap “• List” to add, delete, and reorder list items without typing bullet characters. Semicolon-separated lists still work in the bulk editor.' },
+    text: 'In the individual card editor, tap “• List” to add, delete, and reorder items. Lists appear there as real bullet lines, so you never need to type a bullet character. Semicolon-separated lists still work in the bulk editor.' },
   { ico: '🎨', view: 'home',
     title: 'Make it yours',
     text: 'Open ⚙ Settings to change the theme, accent color, font size, and sound — each profile has its own.' },
@@ -2568,7 +2596,7 @@ const FAQ = [
   ['How does search work?',
    'The search box on the Study tab scans every card\u2019s question and answer across all decks, and studies the matches as a custom set.'],
   ['Can I add colors, shapes, or formatting to cards?',
-   'Yes. The individual card editor has Bold, Italic, Underline, and Bulleted list controls. Select text before choosing a text format. The list editor lets you add, delete, and reorder items without typing bullet characters. The underlying safe syntax remains available: **bold**, *italic*, __underline__, color text such as {{c:red|your text}}, and shapes such as {{shape:circle|#4f46e5|120}}.'],
+   'Yes. The individual card editor has Bold, Italic, Underline, and Bulleted list controls. Select text before choosing a text format. The list editor lets you add, delete, and reorder items, and the card editor displays them as real bullet lines without requiring a keyboard bullet character. The underlying safe syntax remains available: **bold**, *italic*, __underline__, color text such as {{c:red|your text}}, and shapes such as {{shape:circle|#4f46e5|120}}.'],
   ['How do I share a deck with a contact?',
    'On the Study tab, swipe a deck to the left (or hover it on a computer) to reveal Edit, Share, and Hide, then tap Share. On iPhone or Android the share sheet opens so you can send the deck as a file via AirDrop, Messages, email, and more. On a computer the deck downloads as a .json file that you can then attach and send.'],
   ['How do I add a deck that was shared with me?',
@@ -3153,7 +3181,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v47');
+      waitingWorker.postMessage('activate-v48');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }
