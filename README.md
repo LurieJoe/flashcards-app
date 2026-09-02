@@ -14,8 +14,9 @@ Three tabs — **Home**, **Study**, and **Import**:
 - **Home:** a short welcome and quick links to get started. Appearance settings
   (theme, accent, font size, sound) live in **Settings** — the gear icon in the
   top-left corner (see Themes below).
-- **Multiple decks:** create, rename, delete, and switch decks. Each imported file
-  becomes its own deck. Cards are saved per-deck.
+- **Multiple decks:** create, rename, delete, reorder, and switch decks. Cards are
+  saved per-deck. The Study list has an accessible three-line reorder control that
+  reveals **Move up** and **Move down** buttons.
 - **Auto-create a deck (Import tab):** choose a built-in deck (e.g. *Animals*,
   *World Flags*, or *Spanish Vocabulary*) and pick a card count (10/25/50/All) to
   instantly build a deck from a bundled knowledge base — generated **on-device**,
@@ -32,16 +33,20 @@ Three tabs — **Home**, **Study**, and **Import**:
   offline. The flag visual is hidden from assistive technology until the answer is
   revealed so its encoded country does not spoil the question.
 - **Rich card formatting (optional):** card text supports a small, safe syntax —
-  `**bold**`, `*italic*`, line breaks, colored text `{{c:red|text}}` (name or `#hex`),
-  and filled shapes `{{shape:circle|#4f46e5|120}}` (circle, square, rectangle, oval,
-  triangle, diamond, pentagon, hexagon, star, heart). Rendered with HTML-escaping and a
-  strict whitelist, so shared decks can't inject anything. The **Colors** and **Shapes**
+  `**bold**`, `*italic*`, `__underline__`, line breaks, colored text
+  `{{c:red|text}}` (name or `#hex`), and filled shapes
+  `{{shape:circle|#4f46e5|120}}` (circle, square, rectangle, oval, triangle, diamond,
+  pentagon, hexagon, star, heart). The individual card editor includes Bold, Italic,
+  and Underline buttons for selected text. Rendered with HTML-escaping and a strict
+  whitelist, so shared decks can't inject anything. The **Colors** and **Shapes**
   auto-create packs are built with this syntax.
 - **Bulleted lists (optional):** separate answers with a **semicolon** to turn a
   one-liner into a bulleted list — e.g. `Name a primary color | Red; Blue; Yellow`
   renders three bullet points. Works on either side of the card and still supports the
   rich syntax above per item. Need a literal semicolon (grammar/punctuation cards)?
-  Escape it as `\;`.
+  Escape it as `\;`. The individual card editor also provides a structured **List**
+  button with Add, Delete, Move up, and Move down controls, so phone keyboards never
+  need a bullet character.
 - **Profiles (local, no login):** tap the round **avatar in the top-right** to switch
   between profiles or add a new one. Each profile keeps its **own decks, appearance,
   font size, and color theme** — perfect for a shared iPad where each kid gets their
@@ -61,6 +66,11 @@ Three tabs — **Home**, **Study**, and **Import**:
   Or expand **Create a deck** and type/paste a list, one card per line. Separators
   accepted: `question | answer`, `question - answer`, a tab, or a comma (CSV).
   A header row like `Question,Answer` or `Word,Definition` is skipped automatically.
+- **Import preview and duplicate detection:** parsed cards are shown before anything
+  is saved. Choose to create a new deck, add to an existing deck, or replace an
+  existing deck. The preview identifies exact duplicate pairs, repeated questions,
+  and repeated answers. **Skip exact duplicate cards** is on by default; repeated
+  questions or answers are warnings only and are never silently removed.
 - **Export deck:** save the current deck to a `.json` file (backup or share).
 - **Study (Study tab):**
   - Choose **Flashcards**, **Matching Pairs**, or **Multiple Choice**, then use one
@@ -89,8 +99,11 @@ Three tabs — **Home**, **Study**, and **Import**:
     Flags are saved per card. The deck picker shows a **⚑ count** per deck, and an
     **"Only study flagged cards"** toggle lets you drill just the flagged ones across
     the selected deck(s).
-  - **Share or hide a deck:** swipe a deck row left (or hover on desktop) to reveal
-    **Share** and **Hide**.
+  - **Edit, share, or hide a deck:** swipe a deck row left (or hover on desktop) to
+    reveal **Edit**, **Share**, and **Hide**.
+    - **Edit** opens the individual card manager. Tap a card to change its question
+      or answer while preserving its review flag, or add, duplicate, and delete cards.
+      The bulk editor remains available on the Import tab for larger changes.
     - **Share** sends the deck as a `.json` file via the native share sheet on
       iPhone/Android (AirDrop, Messages, Mail, etc.); on desktop it downloads the
       `.json` to attach and send. The recipient imports it on the Import tab.
@@ -192,9 +205,11 @@ Android both require HTTPS off-localhost), but the app still works while the ser
 running. Use Option A or B for true offline use.
 
 ## Updating
-The app is served with a versioned service worker cache. After you deploy changes, fully
-close the home-screen app and reopen it (once or twice) to pick up the new version. Your
-decks, flags, and theme choice are preserved across updates.
+The app is served with a versioned service worker cache. When the app is online, a new
+version can download in the background. A non-blocking **A new version is ready**
+notification then offers **Restart and update** or **Later**. The current cached version
+continues working offline, and activation/reload happens only after the user requests it.
+Decks, flags, profiles, and appearance choices are preserved across updates.
 
 The current and immediately preceding HTML/JavaScript shells remain compatible during
 rollout. This prevents a temporary mixed-cache state from stopping startup while GitHub

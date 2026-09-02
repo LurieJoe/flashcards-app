@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -419,7 +419,11 @@ async function importFile(file) {
     const arr = Array.isArray(data) ? data : data.cards;
     if (Array.isArray(arr)) {
       cards = arr.map(x => Array.isArray(x) ? { q: String(x[0]), a: String(x[1]) }
-                                            : { q: String(x.q ?? x.question ?? ''), a: String(x.a ?? x.answer ?? '') })
+                                            : {
+                                                q: String(x.q ?? x.question ?? ''),
+                                                a: String(x.a ?? x.answer ?? ''),
+                                                flagged: x.flagged === true
+                                              })
                  .filter(c => c.q && c.a);
     }
     return { cards, method: 'json', suggestedName: data.name };
@@ -576,6 +580,7 @@ const deckListEl = document.getElementById('deck-list');
 const studyArea = document.getElementById('study-area');
 const matchArea = document.getElementById('match-area');
 const choiceArea = document.getElementById('choice-area');
+const cardManager = document.getElementById('card-manager');
 const studyModePicker = document.getElementById('study-mode-picker');
 const startModeBtn = document.getElementById('start-mode-btn');
 const modeEligibility = document.getElementById('mode-eligibility');
@@ -587,6 +592,7 @@ function openDeckPicker() {
   studyArea.classList.add('hidden');
   matchArea.classList.add('hidden');
   if (choiceArea) choiceArea.classList.add('hidden');
+  if (cardManager) cardManager.classList.add('hidden');
   deckPicker.classList.remove('hidden');
   stopTimer();
   timerEl.classList.add('hidden');
@@ -640,6 +646,24 @@ function setDeckHidden(id, hidden) {
   renderDeckList();
 }
 
+function selectedPickerDeckIds() {
+  return [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(box => box.value);
+}
+
+function moveDeck(id, direction) {
+  const checked = selectedPickerDeckIds();
+  const from = state.decks.findIndex(deck => deck.id === id);
+  if (from < 0) return;
+  let to = from + direction;
+  while (to >= 0 && to < state.decks.length && state.decks[to].hidden) to += direction;
+  if (to < 0 || to >= state.decks.length) return;
+  [state.decks[from], state.decks[to]] = [state.decks[to], state.decks[from]];
+  studyDeckIds = checked;
+  save();
+  renderDeckOptions();
+  renderDeckList();
+}
+
 function renderDeckList() {
   const visibleDecks = state.decks.filter(d => !d.hidden);
   const hiddenDecks = state.decks.filter(d => d.hidden);
@@ -652,7 +676,8 @@ function renderDeckList() {
 
   deckListEl.innerHTML = '';
   const preselect = studyDeckIds.length ? studyDeckIds : [state.activeId];
-  for (const d of visibleDecks) {
+  for (let visibleIndex = 0; visibleIndex < visibleDecks.length; visibleIndex++) {
+    const d = visibleDecks[visibleIndex];
     const flagged = d.cards.filter(c => c.flagged).length;
     const li = document.createElement('li');
     li.className = 'deck-row';
@@ -660,6 +685,17 @@ function renderDeckList() {
     // Actions revealed behind the row (swipe-left on touch, hover on desktop).
     const actions = document.createElement('div');
     actions.className = 'deck-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'deck-edit-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.setAttribute('aria-label', `Edit cards in ${d.name}`);
+    editBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openCardManager(d.id);
+    });
 
     const shareBtn = document.createElement('button');
     shareBtn.type = 'button';
@@ -675,17 +711,64 @@ function renderDeckList() {
     hideBtn.setAttribute('aria-label', `Hide ${d.name} from Study`);
     hideBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setDeckHidden(d.id, true); });
 
+    if (cardManager) actions.appendChild(editBtn);
     actions.appendChild(shareBtn);
     actions.appendChild(hideBtn);
 
     const swipe = document.createElement('div');
     swipe.className = 'deck-swipe';
 
-    const label = document.createElement('label');
-    label.className = 'deck-item' + (d.cards.length === 0 ? ' disabled' : '');
+    const item = document.createElement('div');
+    item.className = 'deck-item' + (d.cards.length === 0 ? ' disabled' : '');
+
+    const reorderBtn = document.createElement('button');
+    reorderBtn.type = 'button';
+    reorderBtn.className = 'deck-reorder-btn';
+    reorderBtn.textContent = '☰';
+    reorderBtn.title = `Reorder ${d.name}`;
+    reorderBtn.setAttribute('aria-label', `Reorder ${d.name}`);
+
+    const reorderControls = document.createElement('span');
+    reorderControls.className = 'deck-reorder-controls';
+
+    const moveUpBtn = document.createElement('button');
+    moveUpBtn.type = 'button';
+    moveUpBtn.className = 'deck-move-btn';
+    moveUpBtn.textContent = '↑';
+    moveUpBtn.title = `Move ${d.name} up`;
+    moveUpBtn.setAttribute('aria-label', `Move ${d.name} up`);
+    moveUpBtn.disabled = visibleIndex === 0;
+    moveUpBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      moveDeck(d.id, -1);
+    });
+
+    const moveDownBtn = document.createElement('button');
+    moveDownBtn.type = 'button';
+    moveDownBtn.className = 'deck-move-btn';
+    moveDownBtn.textContent = '↓';
+    moveDownBtn.title = `Move ${d.name} down`;
+    moveDownBtn.setAttribute('aria-label', `Move ${d.name} down`);
+    moveDownBtn.disabled = visibleIndex === visibleDecks.length - 1;
+    moveDownBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      moveDeck(d.id, 1);
+    });
+    reorderControls.appendChild(moveUpBtn);
+    reorderControls.appendChild(moveDownBtn);
+    reorderBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const opening = !li.classList.contains('reordering');
+      deckListEl.querySelectorAll('.deck-row.reordering').forEach(row => row.classList.remove('reordering'));
+      li.classList.toggle('reordering', opening);
+    });
 
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.id = `study-deck-${d.id}`;
     cb.value = d.id;
     cb.checked = d.cards.length > 0 && preselect.includes(d.id);
     cb.disabled = d.cards.length === 0;
@@ -698,6 +781,9 @@ function renderDeckList() {
     count.className = 'deck-item-count';
     count.textContent = d.cards.length === 0 ? 'empty' : `${d.cards.length}`;
 
+    const label = document.createElement('label');
+    label.className = 'deck-select-label';
+    label.htmlFor = cb.id;
     label.appendChild(cb);
     label.appendChild(text);
     if (flagged > 0) {
@@ -707,10 +793,13 @@ function renderDeckList() {
       label.appendChild(flag);
     }
     label.appendChild(count);
-    swipe.appendChild(label);
+    item.appendChild(reorderBtn);
+    item.appendChild(reorderControls);
+    item.appendChild(label);
+    swipe.appendChild(item);
     li.appendChild(actions);
     li.appendChild(swipe);
-    attachSwipeToHide(li, swipe, label, cb);
+    attachSwipeToActions(li, swipe, item);
     deckListEl.appendChild(li);
   }
 
@@ -720,9 +809,9 @@ function renderDeckList() {
   else updateLegacyMatchEligibility();
 }
 
-// Touch swipe-left reveals the Hide button; tapping a revealed row closes it.
-function attachSwipeToHide(row, swipe, label, cb) {
-  const OPEN = 176; // px of reveal, matches .deck-actions width (Share + Hide)
+// Touch swipe-left reveals Edit, Share, and Hide; tapping a revealed row closes it.
+function attachSwipeToActions(row, swipe, item) {
+  const OPEN = cardManager ? 234 : 176;
   let startX = null, base = 0, moved = false;
 
   const close = () => { row.classList.remove('revealed'); swipe.style.transform = ''; };
@@ -750,7 +839,7 @@ function attachSwipeToHide(row, swipe, label, cb) {
   });
 
   // If revealed, a tap closes instead of toggling the checkbox.
-  label.addEventListener('click', (e) => {
+  item.addEventListener('click', (e) => {
     if (row.classList.contains('revealed')) { e.preventDefault(); close(); }
   });
   // Close any other open row when this one is interacted with.
@@ -759,6 +848,322 @@ function attachSwipeToHide(row, swipe, label, cb) {
       if (r !== row) { r.classList.remove('revealed'); const s = r.querySelector('.deck-swipe'); if (s) s.style.transform = ''; }
     });
   }, { passive: true });
+}
+
+/* ---------- Study: individual card manager ---------- */
+const cardManagerList = document.getElementById('card-manager-list');
+const cardManagerTitle = document.getElementById('card-manager-title');
+const cardManagerEmpty = document.getElementById('card-manager-empty');
+const cardEditorModal = document.getElementById('card-editor-modal');
+const cardEditorTitle = document.getElementById('card-editor-title');
+const cardEditorQuestion = document.getElementById('card-editor-question');
+const cardEditorAnswer = document.getElementById('card-editor-answer');
+const cardEditorStatus = document.getElementById('card-editor-status');
+const cardEditorDuplicate = document.getElementById('card-editor-duplicate');
+const cardEditorDelete = document.getElementById('card-editor-delete');
+const bulletEditorModal = document.getElementById('bullet-editor-modal');
+const bulletEditorTitle = document.getElementById('bullet-editor-title');
+const bulletEditorList = document.getElementById('bullet-editor-list');
+const bulletEditorStatus = document.getElementById('bullet-editor-status');
+let cardManagerDeckId = null;
+let cardEditorIndex = -1;
+let bulletEditorTarget = null;
+let bulletEditorItems = [];
+
+function managedDeck() {
+  return state.decks.find(deck => deck.id === cardManagerDeckId) || null;
+}
+
+function syncBulkEditorForDeck(deck) {
+  if (!deck || deck.id !== state.activeId) return;
+  const bulk = document.getElementById('bulk-input');
+  if (bulk) bulk.value = cardsToText(deck.cards);
+  updateCount();
+}
+
+function openCardManager(deckId) {
+  if (!cardManager || !cardManagerList) return;
+  const deck = state.decks.find(item => item.id === deckId);
+  if (!deck) return;
+  cardManagerDeckId = deck.id;
+  state.activeId = deck.id;
+  save();
+  deckPicker.classList.add('hidden');
+  studyArea.classList.add('hidden');
+  matchArea.classList.add('hidden');
+  if (choiceArea) choiceArea.classList.add('hidden');
+  cardManager.classList.remove('hidden');
+  renderCardManager();
+  window.scrollTo(0, 0);
+}
+
+function renderCardManager() {
+  const deck = managedDeck();
+  if (!deck || !cardManagerList) {
+    openDeckPicker();
+    return;
+  }
+  cardManagerTitle.textContent = `${deck.name} · ${deck.cards.length} card${deck.cards.length === 1 ? '' : 's'}`;
+  cardManagerList.innerHTML = '';
+  cardManagerEmpty.classList.toggle('hidden', deck.cards.length > 0);
+  cardManagerList.classList.toggle('hidden', deck.cards.length === 0);
+
+  deck.cards.forEach((card, index) => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'card-manager-row';
+    button.setAttribute('aria-label', `Edit card ${index + 1}: ${accessibleRichText(card.q)}`);
+
+    const question = document.createElement('span');
+    question.className = 'card-manager-row-question';
+    question.textContent = `${index + 1}. ${accessibleRichText(card.q) || 'Untitled question'}`;
+    if (card.flagged) {
+      const flag = document.createElement('span');
+      flag.className = 'card-manager-row-flag';
+      flag.textContent = 'Flagged';
+      question.appendChild(flag);
+    }
+
+    const answer = document.createElement('span');
+    answer.className = 'card-manager-row-answer';
+    answer.textContent = accessibleRichText(card.a) || 'No answer';
+    button.appendChild(question);
+    button.appendChild(answer);
+    button.addEventListener('click', () => openCardEditor(index));
+    item.appendChild(button);
+    cardManagerList.appendChild(item);
+  });
+}
+
+function openCardEditor(index = -1) {
+  if (!cardEditorModal) return;
+  const deck = managedDeck();
+  if (!deck) return;
+  const card = index >= 0 ? deck.cards[index] : null;
+  cardEditorIndex = card ? index : -1;
+  cardEditorTitle.textContent = card ? 'Edit card' : 'Add card';
+  cardEditorQuestion.value = card ? card.q : '';
+  cardEditorAnswer.value = card ? card.a : '';
+  cardEditorStatus.textContent = '';
+  cardEditorDuplicate.classList.toggle('hidden', !card);
+  cardEditorDelete.classList.toggle('hidden', !card);
+  cardEditorModal.classList.remove('hidden');
+  setTimeout(() => cardEditorQuestion.focus(), 0);
+}
+
+function closeCardEditor() {
+  if (cardEditorModal) cardEditorModal.classList.add('hidden');
+}
+
+function wrapSelectedText(textarea, marker) {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const selected = textarea.value.slice(start, end);
+  const replacement = `${marker}${selected}${marker}`;
+  textarea.setRangeText(replacement, start, end, 'end');
+  if (!selected) textarea.setSelectionRange(start + marker.length, start + marker.length);
+  else textarea.setSelectionRange(start, start + replacement.length);
+  textarea.focus();
+}
+
+function renderBulletEditor() {
+  if (!bulletEditorList) return;
+  bulletEditorList.innerHTML = '';
+  bulletEditorItems.forEach((text, index) => {
+    const row = document.createElement('div');
+    row.className = 'bullet-editor-row';
+
+    const marker = document.createElement('span');
+    marker.className = 'bullet-editor-marker';
+    marker.textContent = '•';
+    marker.setAttribute('aria-hidden', 'true');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'bullet-editor-input';
+    input.value = text;
+    input.setAttribute('aria-label', `List item ${index + 1}`);
+    input.addEventListener('input', () => { bulletEditorItems[index] = input.value; });
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'bullet-editor-move';
+    up.textContent = '↑';
+    up.title = 'Move item up';
+    up.setAttribute('aria-label', `Move item ${index + 1} up`);
+    up.disabled = index === 0;
+    up.addEventListener('click', () => {
+      [bulletEditorItems[index - 1], bulletEditorItems[index]] =
+        [bulletEditorItems[index], bulletEditorItems[index - 1]];
+      renderBulletEditor();
+      bulletEditorList.querySelectorAll('.bullet-editor-input')[index - 1]?.focus();
+    });
+
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'bullet-editor-move';
+    down.textContent = '↓';
+    down.title = 'Move item down';
+    down.setAttribute('aria-label', `Move item ${index + 1} down`);
+    down.disabled = index === bulletEditorItems.length - 1;
+    down.addEventListener('click', () => {
+      [bulletEditorItems[index], bulletEditorItems[index + 1]] =
+        [bulletEditorItems[index + 1], bulletEditorItems[index]];
+      renderBulletEditor();
+      bulletEditorList.querySelectorAll('.bullet-editor-input')[index + 1]?.focus();
+    });
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'bullet-editor-delete';
+    remove.textContent = 'Delete';
+    remove.setAttribute('aria-label', `Delete item ${index + 1}`);
+    remove.addEventListener('click', () => {
+      bulletEditorItems.splice(index, 1);
+      if (!bulletEditorItems.length) bulletEditorItems.push('');
+      renderBulletEditor();
+      bulletEditorList.querySelectorAll('.bullet-editor-input')[Math.min(index, bulletEditorItems.length - 1)]?.focus();
+    });
+
+    row.appendChild(marker);
+    row.appendChild(input);
+    row.appendChild(up);
+    row.appendChild(down);
+    row.appendChild(remove);
+    bulletEditorList.appendChild(row);
+  });
+}
+
+function openBulletEditor(textarea) {
+  if (!bulletEditorModal || !bulletEditorList) return;
+  bulletEditorTarget = textarea;
+  const items = splitListItems(textarea.value).map(item => item.trim()).filter(Boolean);
+  bulletEditorItems = items.length ? items : ['', ''];
+  if (bulletEditorItems.length === 1) bulletEditorItems.push('');
+  bulletEditorTitle.textContent = `Edit ${textarea === cardEditorQuestion ? 'question' : 'answer'} list`;
+  bulletEditorStatus.textContent = '';
+  renderBulletEditor();
+  bulletEditorModal.classList.remove('hidden');
+  setTimeout(() => bulletEditorList.querySelector('.bullet-editor-input')?.focus(), 0);
+}
+
+function closeBulletEditor() {
+  if (bulletEditorModal) bulletEditorModal.classList.add('hidden');
+  bulletEditorTarget = null;
+  bulletEditorItems = [];
+}
+
+function applyBulletEditor() {
+  if (!bulletEditorTarget) return;
+  const items = bulletEditorItems.map(item => item.trim()).filter(Boolean);
+  if (items.length < 2) {
+    bulletEditorStatus.textContent = 'Add at least two list items.';
+    return;
+  }
+  bulletEditorTarget.value = items.map(item => item.replace(/;/g, '\\;')).join('; ');
+  bulletEditorTarget.focus();
+  closeBulletEditor();
+}
+
+document.querySelectorAll('.format-btn').forEach(button => {
+  button.addEventListener('click', () => {
+    const textarea = document.getElementById(button.dataset.target);
+    if (!textarea) return;
+    const format = button.dataset.format;
+    if (format === 'list') {
+      openBulletEditor(textarea);
+      return;
+    }
+    const markers = { bold: '**', italic: '*', underline: '__' };
+    if (markers[format]) wrapSelectedText(textarea, markers[format]);
+  });
+});
+const bulletEditorClose = document.getElementById('bullet-editor-close');
+if (bulletEditorClose) bulletEditorClose.addEventListener('click', closeBulletEditor);
+const bulletEditorCancel = document.getElementById('bullet-editor-cancel');
+if (bulletEditorCancel) bulletEditorCancel.addEventListener('click', closeBulletEditor);
+const bulletEditorAdd = document.getElementById('bullet-editor-add');
+if (bulletEditorAdd) {
+  bulletEditorAdd.addEventListener('click', () => {
+    bulletEditorItems.push('');
+    renderBulletEditor();
+    bulletEditorList.querySelectorAll('.bullet-editor-input')[bulletEditorItems.length - 1]?.focus();
+  });
+}
+const bulletEditorApply = document.getElementById('bullet-editor-apply');
+if (bulletEditorApply) bulletEditorApply.addEventListener('click', applyBulletEditor);
+if (bulletEditorModal) {
+  bulletEditorModal.addEventListener('click', event => {
+    if (event.target === bulletEditorModal) closeBulletEditor();
+  });
+}
+
+function saveCardEditor() {
+  const deck = managedDeck();
+  if (!deck) return;
+  const q = cardEditorQuestion.value.trim();
+  const a = cardEditorAnswer.value.trim();
+  if (!q || !a) {
+    cardEditorStatus.textContent = 'Enter both a question and an answer.';
+    return;
+  }
+  if (cardEditorIndex >= 0) {
+    const existing = deck.cards[cardEditorIndex];
+    deck.cards[cardEditorIndex] = { ...existing, q, a };
+  } else {
+    deck.cards.push({ q, a });
+  }
+  save();
+  syncBulkEditorForDeck(deck);
+  renderDeckOptions();
+  renderCardManager();
+  closeCardEditor();
+  toast(cardEditorIndex >= 0 ? 'Card updated.' : 'Card added.');
+}
+
+function duplicateCardEditor() {
+  const deck = managedDeck();
+  if (!deck || cardEditorIndex < 0 || !deck.cards[cardEditorIndex]) return;
+  const source = deck.cards[cardEditorIndex];
+  deck.cards.splice(cardEditorIndex + 1, 0, { ...source, flagged: false });
+  save();
+  syncBulkEditorForDeck(deck);
+  renderDeckOptions();
+  renderCardManager();
+  closeCardEditor();
+  toast('Card duplicated.');
+}
+
+function deleteCardEditor() {
+  const deck = managedDeck();
+  if (!deck || cardEditorIndex < 0 || !deck.cards[cardEditorIndex]) return;
+  if (!confirm('Delete this card?')) return;
+  deck.cards.splice(cardEditorIndex, 1);
+  save();
+  syncBulkEditorForDeck(deck);
+  renderDeckOptions();
+  renderCardManager();
+  closeCardEditor();
+  toast('Card deleted.');
+}
+
+const cardManagerBack = document.getElementById('card-manager-back');
+if (cardManagerBack) cardManagerBack.addEventListener('click', openDeckPicker);
+const cardManagerAdd = document.getElementById('card-manager-add');
+if (cardManagerAdd) cardManagerAdd.addEventListener('click', () => openCardEditor());
+const cardManagerEmptyAdd = document.getElementById('card-manager-empty-add');
+if (cardManagerEmptyAdd) cardManagerEmptyAdd.addEventListener('click', () => openCardEditor());
+const cardEditorClose = document.getElementById('card-editor-close');
+if (cardEditorClose) cardEditorClose.addEventListener('click', closeCardEditor);
+const cardEditorSave = document.getElementById('card-editor-save');
+if (cardEditorSave) cardEditorSave.addEventListener('click', saveCardEditor);
+if (cardEditorDuplicate) cardEditorDuplicate.addEventListener('click', duplicateCardEditor);
+if (cardEditorDelete) cardEditorDelete.addEventListener('click', deleteCardEditor);
+if (cardEditorModal) {
+  cardEditorModal.addEventListener('click', event => {
+    if (event.target === cardEditorModal) closeCardEditor();
+  });
 }
 
 function renderHiddenDecks(hiddenDecks) {
@@ -993,6 +1398,7 @@ function flagSpan(code) {
 function inlineMd(s) {
   return s
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<u>$1</u>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/\n/g, '<br>');
 }
@@ -1024,12 +1430,16 @@ function renderInline(raw) {
 // Split on top-level ';' used as a list separator. Semicolons inside {{...}}
 // tokens are ignored, and '\;' is an escape for a literal semicolon (handy for
 // grammar/punctuation cards, which are about the only place a semicolon appears).
-function splitListItems(s) {
+function splitListItems(s, preserveEscapedSemicolons = false) {
   const parts = [];
   let buf = '', depth = 0;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
-    if (ch === '\\' && s[i + 1] === ';') { buf += ';'; i++; continue; }
+    if (ch === '\\' && s[i + 1] === ';') {
+      buf += preserveEscapedSemicolons ? '\\;' : ';';
+      i++;
+      continue;
+    }
     if (ch === '{' && s[i + 1] === '{') { depth++; buf += '{{'; i++; continue; }
     if (ch === '}' && s[i + 1] === '}') { if (depth > 0) depth--; buf += '}}'; i++; continue; }
     if (ch === ';' && depth === 0) { parts.push(buf); buf = ''; continue; }
@@ -1040,7 +1450,7 @@ function splitListItems(s) {
 }
 function renderRich(el, text) {
   const raw = text == null ? '' : String(text);
-  if (!/[*\n;\\]|\{\{/.test(raw)) { el.textContent = raw; return; }
+  if (!/[*_\n;\\]|\{\{/.test(raw)) { el.textContent = raw; return; }
   const items = splitListItems(raw).map(s => s.trim()).filter(s => s.length);
   if (items.length > 1) {
     el.innerHTML = '<span class="card-list">' +
@@ -1074,6 +1484,7 @@ function normalizeMatchValue(value) {
     .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
     .replace(/\*\*/g, '')
     .replace(/\*/g, '')
+    .replace(/__/g, '')
     .replace(/\\;/g, ';')
     .trim()
     .toLocaleLowerCase()
@@ -1497,7 +1908,7 @@ function choiceOptionFits(text) {
 }
 
 function choiceAnswerItems(card) {
-  const items = splitListItems(String(card.a ?? '')).map(item => item.trim()).filter(Boolean);
+  const items = splitListItems(String(card.a ?? ''), true).map(item => item.trim()).filter(Boolean);
   const unique = new Map();
   for (const text of items) {
     const key = normalizeMatchValue(text);
@@ -1514,6 +1925,7 @@ function accessibleRichText(text) {
     .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
     .replace(/\*\*/g, '')
     .replace(/\*/g, '')
+    .replace(/__/g, '')
     .replace(/\\;/g, ';')
     .replace(/;/g, ', ')
     .replace(/\s+/g, ' ')
@@ -1962,7 +2374,13 @@ const TIPS = [
     text: 'Tap the colored circle in the top-right to add a profile or switch users. Each profile keeps its own decks, theme, and font size — perfect for sharing one device.' },
   { ico: '📄', view: 'edit',
     title: 'Import a file to create a deck',
-    text: 'On the Import tab, tap “Import file…” to load a Word .docx, a .csv/.txt list, or a .json deck. Each file becomes its own deck.' },
+    text: 'On the Import tab, tap “Import file” to load a Word .docx, a .csv/.txt list, or a .json deck. Review the cards and duplicate warnings before creating, adding to, or replacing a deck.' },
+  { ico: '✏️', view: 'study',
+    title: 'Edit individual cards',
+    text: 'Swipe a deck left (or hover on a computer) and choose Edit. Tap any card to change it, or add, duplicate, and delete cards without opening the bulk editor.' },
+  { ico: '↕️', view: 'study',
+    title: 'Reorder your decks',
+    text: 'Tap the three-line handle on the left of a deck, then use the up and down buttons to place that deck where you want it.' },
   { ico: '👆', view: 'study',
     title: 'Tap a card to reveal the answer',
     text: 'While studying, tap the card to flip it and show the answer. Tap again to flip back to the question.' },
@@ -1986,7 +2404,7 @@ const TIPS = [
     text: 'Check multiple decks to study them together, or use the search box to study every matching card from all your decks at once.' },
   { ico: '📤', view: 'study',
     title: 'Share a deck',
-    text: 'On the Study tab, swipe a deck left (or hover it on a computer) to reveal Share, then tap Share to send it via AirDrop, Messages, or email — or save it as a .json file.' },
+    text: 'On the Study tab, swipe a deck left (or hover it on a computer) to reveal Edit, Share, and Hide. Tap Share to send it via AirDrop, Messages, or email — or save it as a .json file.' },
   { ico: '⏱️', view: 'study',
     title: 'Add a timer',
     text: 'Turn on “Show a timer while studying” in ⚙ Settings to time your session. Tap the timer to pause or resume it.' },
@@ -1995,7 +2413,7 @@ const TIPS = [
     text: 'On the Study tab, swipe a deck left (or hover it on a computer) and tap Hide to remove it from your Study list without deleting it. Hidden decks appear at the bottom, ready to bring back.' },
   { ico: '📝', view: 'edit',
     title: 'Bulleted answers',
-    text: 'Separate answer items with a semicolon to show them as a bulleted list — e.g. “Name a primary color | Red; Blue; Yellow”.' },
+    text: 'In the individual card editor, tap “• List” to add, delete, and reorder list items without typing bullet characters. Semicolon-separated lists still work in the bulk editor.' },
   { ico: '🎨', view: 'home',
     title: 'Make it yours',
     text: 'Open ⚙ Settings to change the theme, accent color, font size, and sound — each profile has its own.' },
@@ -2126,11 +2544,13 @@ const FAQ = [
   ['Does it work offline?',
    'Yes. Once installed to your home screen, the app runs fully offline. You only need a connection the first time you open it (and to fetch updates).'],
   ['How do I import questions?',
-   'Go to the Import tab and tap \u201cImport file\u2026\u201d. You can load a Word .docx, a .csv/.txt list, or a deck .json exported from this app. You can also type or paste cards as \u201cquestion | answer\u201d, one per line.'],
+   'Go to the Import tab and tap \u201cImport file\u201d. You can load a Word .docx, a .csv/.txt list, or a deck .json exported from this app. Review the preview and duplicate warnings, then create a new deck, add the cards to an existing deck, or replace an existing deck. You can also type or paste cards as \u201cquestion | answer\u201d, one per line.'],
   ['Why can\u2019t I import some PDFs or Word files?',
    'Scanned or image-only documents contain pictures of text, not real text, so nothing can be extracted without OCR. Convert them to a text-based .docx (open in Word) first, then import.'],
   ['How do decks work?',
-   'Each imported file becomes its own deck. Manage decks on the Import tab (create, rename, delete) and pick which deck to edit from the dropdown.'],
+   'Manage decks on the Import tab (create, rename, delete) and pick which deck to edit from the dropdown. On the Study tab, swipe a deck left and choose Edit to manage its individual cards. Tap the three-line handle to reveal controls that move the deck up or down.'],
+  ['How does duplicate detection work when importing?',
+   'The import preview identifies exact question-and-answer duplicates, repeated questions, and repeated answers. Exact duplicates can be skipped automatically. Repeated questions and answers remain available because they may be intentional; they are warnings only.'],
   ['How do I study more than one deck at once?',
    'On the Study tab, check multiple decks in the list \u2014 they\u2019re studied together as one combined set.'],
   ['What does \u201cFlag for review\u201d do?',
@@ -2148,15 +2568,15 @@ const FAQ = [
   ['How does search work?',
    'The search box on the Study tab scans every card\u2019s question and answer across all decks, and studies the matches as a custom set.'],
   ['Can I add colors, shapes, or formatting to cards?',
-   'Yes. Card text supports a small, safe formatting syntax: **bold** with double asterisks, *italic* with single asterisks, and line breaks. For color text use {{c:red|your text}} (a color name or #hex). To draw a filled shape use {{shape:circle|#4f46e5|120}} \u2014 the parts are shape, color, and size in pixels. Shapes include circle, square, rectangle, oval, triangle, diamond, pentagon, hexagon, star, and heart. The Auto-create \u201cColors,\u201d \u201cShapes,\u201d and \u201cWorld Flags\u201d decks provide examples.'],
+   'Yes. The individual card editor has Bold, Italic, Underline, and Bulleted list controls. Select text before choosing a text format. The list editor lets you add, delete, and reorder items without typing bullet characters. The underlying safe syntax remains available: **bold**, *italic*, __underline__, color text such as {{c:red|your text}}, and shapes such as {{shape:circle|#4f46e5|120}}.'],
   ['How do I share a deck with a contact?',
-   'On the Study tab, swipe a deck to the left (or hover it on a computer) to reveal Share, then tap Share. On iPhone or Android the share sheet opens so you can send the deck as a file via AirDrop, Messages, email, and more. On a computer the deck downloads as a .json file that you can then attach and send.'],
+   'On the Study tab, swipe a deck to the left (or hover it on a computer) to reveal Edit, Share, and Hide, then tap Share. On iPhone or Android the share sheet opens so you can send the deck as a file via AirDrop, Messages, email, and more. On a computer the deck downloads as a .json file that you can then attach and send.'],
   ['How do I add a deck that was shared with me?',
-   'Save the .json file you received, then open the app, go to the Import tab, tap \u201cImport file\u2026\u201d, and choose that file. The whole deck \u2014 its name and all cards \u2014 is added to your decks. On iPhone you can also open the file and choose to open it in Flashcards.'],
+   'Save the .json file you received, then open the app, go to the Import tab, tap \u201cImport file\u201d, and choose that file. Review the preview, then create a new deck or add or replace an existing deck. On iPhone you can also open the file and choose to open it in Flashcards.'],
   ['How do I install it on my iPhone?',
    'Open the app in Safari, tap the Share button, then \u201cAdd to Home Screen\u201d.'],
   ['How do I get updates?',
-   'Fully close the home-screen app and reopen it (once or twice). Your decks and settings are always preserved across updates.'],
+   'When you are online and a new version has downloaded, a non-blocking update notice appears. Choose \u201cRestart and update\u201d when you are ready, or choose \u201cLater\u201d and keep using the current cached version. Your decks and settings are preserved.'],
 ];
 
 function renderFaq() {
@@ -2303,7 +2723,203 @@ document.getElementById('export-btn').addEventListener('click', () => downloadDe
 
 /* ---------- File import ---------- */
 const fileInput = document.getElementById('file-input');
-fileInput.addEventListener('change', async () => {
+const importPreviewModal = document.getElementById('import-preview-modal');
+const importPreviewSummary = document.getElementById('import-preview-summary');
+const importPreviewWarnings = document.getElementById('import-preview-warnings');
+const importPreviewList = document.getElementById('import-preview-list');
+const importDeckName = document.getElementById('import-new-name');
+const importDestination = document.getElementById('import-destination');
+const importNewNameWrap = document.getElementById('import-new-name-row');
+const importTargetWrap = document.getElementById('import-existing-row');
+const importTargetDeck = document.getElementById('import-existing-deck');
+const importSkipDuplicates = document.getElementById('import-skip-duplicates');
+const importResultSummary = document.getElementById('import-result-summary');
+let pendingImport = null;
+
+function importPairKey(card) {
+  return JSON.stringify([importValue(card.q), importValue(card.a)]);
+}
+
+function importValue(value) {
+  return String(value ?? '');
+}
+
+function analyzeImportedCards(cards) {
+  const pairCounts = new Map();
+  const questionCounts = new Map();
+  const answerCounts = new Map();
+  const duplicateIndexes = new Set();
+  cards.forEach((card, index) => {
+    const pairKey = importPairKey(card);
+    const qKey = importValue(card.q);
+    const aKey = importValue(card.a);
+    if ((pairCounts.get(pairKey) || 0) > 0) duplicateIndexes.add(index);
+    pairCounts.set(pairKey, (pairCounts.get(pairKey) || 0) + 1);
+    questionCounts.set(qKey, (questionCounts.get(qKey) || 0) + 1);
+    answerCounts.set(aKey, (answerCounts.get(aKey) || 0) + 1);
+  });
+  return {
+    duplicateIndexes,
+    exactDuplicates: [...pairCounts.values()].reduce((total, count) => total + Math.max(0, count - 1), 0),
+    repeatedQuestions: [...questionCounts.values()].filter(count => count > 1).length,
+    repeatedAnswers: [...answerCounts.values()].filter(count => count > 1).length
+  };
+}
+
+function closeImportPreview() {
+  if (importPreviewModal) importPreviewModal.classList.add('hidden');
+  pendingImport = null;
+}
+
+function updateImportDestination() {
+  if (!importDestination || !importTargetWrap) return;
+  const needsTarget = importDestination.value !== 'new';
+  importTargetWrap.classList.toggle('hidden', !needsTarget);
+  if (importNewNameWrap) importNewNameWrap.classList.toggle('hidden', needsTarget);
+  updateImportResultSummary();
+}
+
+function updateImportResultSummary() {
+  if (!pendingImport || !importResultSummary) return;
+  const destination = importDestination.value;
+  const target = state.decks.find(deck => deck.id === importTargetDeck.value);
+  const existing = destination === 'add' && target ? target.cards : [];
+  const resultingCards = deduplicateImportedCards(pendingImport.cards, existing);
+  const skipped = pendingImport.cards.length - resultingCards.length;
+  const action = destination === 'add' ? 'added' : destination === 'replace' ? 'used to replace the deck' : 'used to create the deck';
+  importResultSummary.textContent =
+    `${resultingCards.length} card${resultingCards.length === 1 ? '' : 's'} will be ${action}` +
+    (skipped ? `; ${skipped} exact duplicate${skipped === 1 ? '' : 's'} will be skipped.` : '.');
+}
+
+function showImportPreview(name, cards, method) {
+  const analysis = analyzeImportedCards(cards);
+  pendingImport = { name, cards, method, analysis };
+  importDeckName.value = name;
+  importDestination.value = 'new';
+  importSkipDuplicates.checked = true;
+  importPreviewSummary.textContent = `${cards.length} card${cards.length === 1 ? '' : 's'} parsed using ${method}.`;
+  importPreviewWarnings.innerHTML = '';
+
+  const warnings = [
+    [analysis.exactDuplicates, 'exact duplicate card', 'exact duplicate cards'],
+    [analysis.repeatedQuestions, 'repeated question', 'repeated questions'],
+    [analysis.repeatedAnswers, 'repeated answer', 'repeated answers']
+  ];
+  warnings.forEach(([count, singular, plural]) => {
+    if (!count) return;
+    const message = document.createElement('p');
+    message.className = 'import-warning';
+    message.textContent = `${count} ${count === 1 ? singular : plural} found.`;
+    importPreviewWarnings.appendChild(message);
+  });
+  if (!importPreviewWarnings.childElementCount) {
+    const message = document.createElement('p');
+    message.className = 'muted';
+    message.textContent = 'No duplicate pairs or repeated questions or answers found.';
+    importPreviewWarnings.appendChild(message);
+  }
+
+  importPreviewList.innerHTML = '';
+  cards.slice(0, 8).forEach((card, index) => {
+    const item = document.createElement('li');
+    item.className = `import-preview-item${analysis.duplicateIndexes.has(index) ? ' duplicate' : ''}`;
+    const question = document.createElement('strong');
+    question.textContent = accessibleRichText(card.q);
+    const answer = document.createElement('span');
+    answer.textContent = accessibleRichText(card.a);
+    item.appendChild(question);
+    item.appendChild(answer);
+    importPreviewList.appendChild(item);
+  });
+  if (cards.length > 8) {
+    const remainder = document.createElement('li');
+    remainder.className = 'muted';
+    remainder.textContent = `And ${cards.length - 8} more card${cards.length - 8 === 1 ? '' : 's'}...`;
+    importPreviewList.appendChild(remainder);
+  }
+
+  importTargetDeck.innerHTML = '';
+  state.decks.forEach(deck => {
+    const option = document.createElement('option');
+    option.value = deck.id;
+    option.textContent = `${deck.name} (${deck.cards.length})`;
+    importTargetDeck.appendChild(option);
+  });
+  importTargetDeck.value = state.activeId || state.decks[0]?.id || '';
+  updateImportDestination();
+  importPreviewModal.classList.remove('hidden');
+}
+
+function deduplicateImportedCards(cards, existingCards = []) {
+  if (!importSkipDuplicates?.checked) return cards.map(card => ({ ...card }));
+  const seen = new Set(existingCards.map(importPairKey));
+  return cards.filter(card => {
+    const key = importPairKey(card);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map(card => ({ ...card }));
+}
+
+function confirmImportPreview() {
+  if (!pendingImport) return;
+  const destination = importDestination.value;
+  let deck;
+  let importedCount;
+  if (destination === 'new') {
+    const name = importDeckName.value.trim();
+    if (!name) {
+      toast('Enter a deck name.');
+      importDeckName.focus();
+      return;
+    }
+    const cards = deduplicateImportedCards(pendingImport.cards);
+    importedCount = cards.length;
+    deck = { id: uid(), name, cards };
+    state.decks.push(deck);
+  } else {
+    deck = state.decks.find(item => item.id === importTargetDeck.value);
+    if (!deck) {
+      toast('Choose a destination deck.');
+      return;
+    }
+    if (destination === 'add') {
+      const cards = deduplicateImportedCards(pendingImport.cards, deck.cards);
+      importedCount = cards.length;
+      deck.cards.push(...cards);
+    } else {
+      const cards = deduplicateImportedCards(pendingImport.cards);
+      importedCount = cards.length;
+      deck.cards = cards;
+    }
+  }
+  state.activeId = deck.id;
+  save();
+  renderDeckOptions();
+  renderDeckList();
+  document.getElementById('bulk-input').value = cardsToText(deck.cards);
+  updateCount();
+  closeImportPreview();
+  setStatus(`Imported ${importedCount} card${importedCount === 1 ? '' : 's'} into “${deck.name}”.`);
+}
+
+if (importDestination) importDestination.addEventListener('change', updateImportDestination);
+if (importTargetDeck) importTargetDeck.addEventListener('change', updateImportResultSummary);
+if (importSkipDuplicates) importSkipDuplicates.addEventListener('change', updateImportResultSummary);
+const importPreviewClose = document.getElementById('import-preview-close');
+if (importPreviewClose) importPreviewClose.addEventListener('click', closeImportPreview);
+const importCancel = document.getElementById('import-preview-cancel');
+if (importCancel) importCancel.addEventListener('click', closeImportPreview);
+const importConfirm = document.getElementById('import-preview-confirm');
+if (importConfirm) importConfirm.addEventListener('click', confirmImportPreview);
+if (importPreviewModal) {
+  importPreviewModal.addEventListener('click', event => {
+    if (event.target === importPreviewModal) closeImportPreview();
+  });
+}
+
+if (fileInput) fileInput.addEventListener('change', async () => {
   const file = fileInput.files[0];
   if (!file) return;
   setStatus(`Reading ${file.name}…`);
@@ -2314,15 +2930,21 @@ fileInput.addEventListener('change', async () => {
       fileInput.value = '';
       return;
     }
-    const deckName = uniqueName((suggestedName && suggestedName.trim()) || baseName(file.name) || 'Imported');
-    const d = { id: uid(), name: deckName, cards };
-    state.decks.push(d);
-    state.activeId = d.id;
-    save();
-    renderDeckOptions();
-    document.getElementById('bulk-input').value = cardsToText(cards);
-    updateCount();
-    setStatus(`Imported ${cards.length} cards into “${deckName}” (${method}).`);
+    const proposedName = (suggestedName && suggestedName.trim()) || baseName(file.name) || 'Imported';
+    if (importPreviewModal) {
+      showImportPreview(uniqueName(proposedName), cards, method);
+      setStatus('');
+    } else {
+      const deckName = uniqueName(proposedName);
+      const d = { id: uid(), name: deckName, cards };
+      state.decks.push(d);
+      state.activeId = d.id;
+      save();
+      renderDeckOptions();
+      document.getElementById('bulk-input').value = cardsToText(cards);
+      updateCount();
+      setStatus(`Imported ${cards.length} cards into “${deckName}” (${method}).`);
+    }
   } catch (err) {
     setStatus(err.message || 'Could not read that file.', false);
   }
@@ -2506,10 +3128,38 @@ if (_removedHeaders) {
 }
 
 if ('serviceWorker' in navigator) {
-  // Reload once when a new service worker takes control, so updates apply immediately.
+  let waitingWorker = null;
+  let updateRequested = false;
   let reloading = false;
+
+  function hideUpdateReady() {
+    const banner = document.getElementById('update-ready-banner');
+    if (banner) banner.remove();
+  }
+
+  function showUpdateReady(worker) {
+    if (!worker || !navigator.serviceWorker.controller) return;
+    waitingWorker = worker;
+    if (document.getElementById('update-ready-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'update-ready-banner';
+    banner.className = 'update-ready-banner';
+    banner.setAttribute('role', 'status');
+    banner.innerHTML =
+      '<span class="update-ready-message"><strong>A new version is ready.</strong> Restart to apply it. Your decks stay saved.</span>' +
+      '<button type="button" class="btn primary" id="update-ready-restart">Restart and update</button>' +
+      '<button type="button" class="update-ready-later" id="update-ready-later">Later</button>';
+    document.body.appendChild(banner);
+    document.getElementById('update-ready-restart').addEventListener('click', () => {
+      if (!waitingWorker) return;
+      updateRequested = true;
+      waitingWorker.postMessage('activate-v47');
+    });
+    document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
+  }
+
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) return;
+    if (!updateRequested || reloading) return;
     reloading = true;
     window.location.reload();
   });
@@ -2521,16 +3171,13 @@ if ('serviceWorker' in navigator) {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') reg.update().catch(() => {});
       });
-      // If an updated worker is waiting, ask it to activate right away.
-      function promote(w) {
-        if (w && w.state === 'installed' && navigator.serviceWorker.controller) {
-          w.postMessage('skipWaiting');
-        }
+      function announce(worker) {
+        if (worker && worker.state === 'installed') showUpdateReady(worker);
       }
-      if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+      if (reg.waiting) showUpdateReady(reg.waiting);
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
-        if (nw) nw.addEventListener('statechange', () => promote(nw));
+        if (nw) nw.addEventListener('statechange', () => announce(nw));
       });
     }).catch(() => {});
   });

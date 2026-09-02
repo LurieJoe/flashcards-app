@@ -596,14 +596,22 @@ main {
 .deck-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   background: var(--surface);
   border: 1px solid var(--surface-2);
   border-radius: 12px;
-  padding: 14px 16px;
-  cursor: pointer;
+  padding: 8px 10px;
 }
 .deck-item.disabled { opacity: 0.5; cursor: default; }
+.deck-select-label {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px;
+  cursor: pointer;
+}
 .deck-item input[type=checkbox] {
   width: 22px;
   height: 22px;
@@ -619,8 +627,38 @@ main {
   border-radius: 20px;
   padding: 2px 10px;
 }
+.deck-reorder-btn,
+.deck-move-btn {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.deck-reorder-btn {
+  width: 30px;
+  height: 36px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+.deck-reorder-controls {
+  display: none;
+  gap: 2px;
+}
+.deck-row.reordering .deck-reorder-btn { display: none; }
+.deck-row.reordering .deck-reorder-controls { display: flex; }
+.deck-move-btn {
+  width: 30px;
+  height: 36px;
+  padding: 0;
+  font-size: 18px;
+  background: var(--surface-2);
+}
+.deck-move-btn:disabled { opacity: 0.35; cursor: default; }
 
-/* Swipe-to-reveal deck actions (Share / Hide) */
+/* Swipe-to-reveal deck actions (Edit / Share / Hide) */
 .deck-row {
   position: relative;
   overflow: hidden;
@@ -648,11 +686,221 @@ main {
   font-size: 15px;
   cursor: pointer;
 }
+.deck-actions:has(.deck-edit-btn) button { width: 78px; }
+.deck-edit-btn { background: #0f766e; }
 .deck-share-btn { background: var(--primary); }
 .deck-hide-btn { background: var(--danger); }
 .deck-row.revealed .deck-swipe { transform: translateX(-176px); }
+.deck-row:has(.deck-edit-btn).revealed .deck-swipe { transform: translateX(-234px); }
 @media (hover: hover) {
   .deck-row:hover .deck-swipe { transform: translateX(-176px); }
+  .deck-row:has(.deck-edit-btn):hover .deck-swipe { transform: translateX(-234px); }
+}
+
+/* Individual card manager */
+.card-manager-head { margin-bottom: 4px; }
+.card-manager-head .btn { flex: 0 0 auto; }
+.card-manager-help { margin: 4px 0 12px; }
+.card-manager-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.card-manager-row {
+  width: 100%;
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.card-manager-row-question,
+.card-manager-row-answer {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.card-manager-row-question { font-weight: 700; }
+.card-manager-row-answer {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 5px;
+}
+.card-manager-row-flag {
+  color: #f59e0b;
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 6px;
+}
+.field-label {
+  display: block;
+  margin: 10px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.format-toolbar {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+.format-btn {
+  min-width: 38px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--surface-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 15px;
+}
+.format-btn:active { transform: scale(0.96); }
+.format-underline { text-decoration: underline; }
+.format-list { margin-left: auto; min-width: 72px; }
+.card-editor-actions,
+.import-preview-actions,
+.bullet-editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.card-editor-actions .btn,
+.import-preview-actions .btn,
+.bullet-editor-actions .btn { min-width: 0; }
+
+/* Structured bulleted-list editor */
+.bullet-editor-card { max-width: 520px; }
+.bullet-editor-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.bullet-editor-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  gap: 5px;
+  align-items: center;
+}
+.bullet-editor-marker {
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+}
+.bullet-editor-input {
+  width: 100%;
+  min-width: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--surface-2);
+  border-radius: 9px;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+.bullet-editor-move,
+.bullet-editor-delete {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--surface-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.bullet-editor-delete { color: var(--danger); }
+.bullet-editor-move:disabled { opacity: 0.35; cursor: default; }
+@media (max-width: 430px) {
+  .bullet-editor-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+  .bullet-editor-delete {
+    grid-column: 2 / 5;
+    justify-self: end;
+    width: auto;
+    padding: 0 10px;
+  }
+}
+
+/* Import preview */
+.import-preview-card { max-width: 520px; }
+.import-preview-summary {
+  margin: 0 0 10px;
+  font-weight: 700;
+}
+.import-preview-warnings {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.import-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: color-mix(in srgb, #f59e0b 15%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.import-preview-list {
+  margin: 0;
+  padding-left: 24px;
+  display: grid;
+  gap: 7px;
+}
+.import-preview-item {
+  padding: 8px 10px;
+  border: 1px solid var(--surface-2);
+  border-radius: 9px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.import-preview-item strong,
+.import-preview-item span { display: block; overflow-wrap: anywhere; }
+.import-preview-item span { color: var(--muted); margin-top: 3px; }
+.import-preview-item.duplicate { border-color: #f59e0b; }
+.import-preview-card select,
+.import-preview-card input[type=text] {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--surface-2);
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-size: 15px;
+}
+.import-skip-row { margin-top: 14px; }
+
+/* Update-ready notification */
+.update-ready-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 12px;
+  border: 1px solid var(--primary-2);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.35);
+}
+.update-ready-message { flex: 1; font-size: 14px; line-height: 1.35; }
+.update-ready-banner .btn { flex: 0 0 auto; padding: 10px 12px; }
+.update-ready-later {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 8px;
 }
 
 /* Hidden decks manager */
