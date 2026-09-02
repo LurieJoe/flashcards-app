@@ -354,6 +354,7 @@
       <div class="import-row">
         <label class="btn" for="file-input">Import file</label>
         <input id="file-input" type="file" accept=".docx,.json,.txt,.csv" hidden />
+        <button id="export-btn" class="btn">Export selected deck</button>
         <span class="import-hint">.docx, .csv, .txt, or a deck .json</span>
       </div>
 
@@ -361,7 +362,7 @@
 
       <button type="button" id="manual-editor-toggle" class="btn manual-editor-toggle hidden"
               aria-expanded="false" aria-controls="manual-editor">
-        <span>Create a deck</span><span class="manual-editor-chevron" aria-hidden="true">&#8964;</span>
+        <span>Create or edit cards</span><span class="manual-editor-chevron" aria-hidden="true">&#8964;</span>
       </button>
       <section id="manual-editor" class="manual-editor">
         <p class="help">
@@ -380,7 +381,6 @@
           placeholder="What is the capital of France? | Paris&#10;2 + 2 | 4&#10;Largest planet | Jupiter"></textarea>
         <div class="edit-actions">
           <button id="save-btn" class="btn primary">Save cards</button>
-          <button id="export-btn" class="btn">Export deck</button>
           <button id="clear-btn" class="btn danger">Clear</button>
         </div>
         <p class="count"><span id="card-count">0</span> cards in this deck</p>

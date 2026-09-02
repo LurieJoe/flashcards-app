@@ -25,8 +25,8 @@ Three tabs — **Home**, **Study**, and **Import**:
   Spanish Vocabulary, French Vocabulary, Portuguese Vocabulary, Planets & Space,
   US Civics Basics, Colors, and Shapes.
 - **Streamlined Import tab:** choose built-in decks from a dropdown, import a supported
-  file, or expand **Create a deck** only when you need the manual card editor and its
-  formatting instructions.
+  file, export the selected deck, or expand **Create or edit cards** only when you need
+  the bulk card editor and its formatting instructions.
 - **World Flags:** creates up to 195 visual-recognition cards with a flag emoji on the
   question side and the country name on the answer side. Platforms without native flag
   emoji support use bundled SVG fallbacks, so the deck remains consistent and fully
@@ -64,7 +64,7 @@ Three tabs — **Home**, **Study**, and **Import**:
   - **`.csv`** / **`.txt`** — `question,answer` or any of the separators below.
   - **`.json`** — a deck exported from this app (round-trips name + cards).
 
-  Or expand **Create a deck** and type/paste a list, one card per line. Separators
+  Or expand **Create or edit cards** and type/paste a list, one card per line. Separators
   accepted: `question | answer`, `question - answer`, a tab, or a comma (CSV).
   A header row like `Question,Answer` or `Word,Definition` is skipped automatically.
 - **Import preview and duplicate detection:** parsed cards are shown before anything
@@ -72,7 +72,9 @@ Three tabs — **Home**, **Study**, and **Import**:
   existing deck. The preview identifies exact duplicate pairs, repeated questions,
   and repeated answers. **Skip exact duplicate cards** is on by default; repeated
   questions or answers are warnings only and are never silently removed.
-- **Export deck:** save the current deck to a `.json` file (backup or share).
+- **Export selected deck:** the always-visible Import-tab button saves the selected
+  deck to a `.json` file for backup or sharing. Study-tab **Share** remains optimized
+  for sending the deck through the device share sheet.
 - **Study (Study tab):**
   - Choose **Flashcards**, **Matching Pairs**, or **Multiple Choice**, then use one
     Start button. Mode-specific controls appear only when relevant.
