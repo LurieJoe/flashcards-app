@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v49';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -2404,11 +2404,11 @@ const TIPS = [
     title: 'Import a file to create a deck',
     text: 'On the Import tab, tap “Import file” to load a Word .docx, a .csv/.txt list, or a .json deck. Review the cards and duplicate warnings before creating, adding to, or replacing a deck.' },
   { ico: '✏️', view: 'study',
-    title: 'Edit individual cards',
-    text: 'Swipe a deck left (or hover on a computer) and choose Edit. Tap any card to change it, or add, duplicate, and delete cards without opening the bulk editor.' },
+    title: 'Edit a deck or individual card',
+    text: 'On the Study tab, swipe a deck left (or hover on a computer) and choose Edit. This opens that deck’s card list. Tap a card to change it, or add, duplicate, and delete cards.' },
   { ico: '↕️', view: 'study',
-    title: 'Reorder your decks',
-    text: 'Tap the three-line handle on the left of a deck, then use the up and down buttons to place that deck where you want it.' },
+    title: 'Reorder decks in the Study list',
+    text: 'On the Study tab, tap the three-line handle on the left of a deck. Use the up and down buttons to move it to the position you want in the list.' },
   { ico: '👆', view: 'study',
     title: 'Tap a card to reveal the answer',
     text: 'While studying, tap the card to flip it and show the answer. Tap again to flip back to the question.' },
@@ -3181,7 +3181,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v48');
+      waitingWorker.postMessage('activate-v49');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }
