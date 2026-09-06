@@ -481,6 +481,30 @@ main {
 /* Study deck picker */
 #deck-picker h2 { font-size: 20px; margin: 4px 0 6px; }
 
+.resume-study-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--primary-2);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+}
+.resume-study-panel strong { display: block; }
+.resume-study-panel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.resume-study-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
 .search-row {
   display: flex;
   gap: 8px;
@@ -701,6 +725,21 @@ main {
 .card-manager-head { margin-bottom: 4px; }
 .card-manager-head .btn { flex: 0 0 auto; }
 .card-manager-help { margin: 4px 0 12px; }
+.card-manager-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+#card-manager-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--surface-2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 15px;
+}
 .card-manager-list {
   list-style: none;
   margin: 0;
@@ -961,7 +1000,14 @@ main {
   margin-bottom: 12px;
 }
 .study-deck-label { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.study-top .study-deck-label { flex: 1; min-width: 0; }
 .btn.small { flex: 0 0 auto; padding: 8px 12px; font-size: 14px; }
+
+@media (max-width: 430px) {
+  .resume-study-panel { align-items: stretch; flex-direction: column; }
+  .resume-study-actions .btn { flex: 1; }
+  #study-edit-card { padding-left: 9px; padding-right: 9px; }
+}
 
 /* Flag for review */
 .flag-row {

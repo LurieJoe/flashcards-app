@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v50';
+const APP_VERSION = 'v51';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -60,9 +60,10 @@ let choiceAnswered = false;
 let editOpenedOnce = false; // default Import tab to "My cards" on first open per session
 let order = [];
 let pos = 0;
+let currentStudyLabel = '';
 
 /* ---------- Persistence ---------- */
-function uid() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function uid(prefix = 'd') { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 /* ---------- Profiles (local, no login) ----------
    Each profile namespaces its own storage under flashcards.p.<id>.<suffix>, so a
@@ -70,7 +71,10 @@ function uid() { return 'd' + Date.now().toString(36) + Math.random().toString(3
    font size, and settings — all on-device. A registry lists profiles + the active
    one. Legacy (pre-profile) data is migrated into a default profile on first run. */
 const PROFILES_KEY = 'flashcards.profiles.v1';
-const PROFILE_SUFFIXES = ['data.v2', 'pref.sound', 'pref.timer', 'pref.font', 'theme', 'accent', 'samplesSeeded'];
+const PROFILE_SUFFIXES = [
+  'data.v2', 'studySession.v1', 'pref.sound', 'pref.timer', 'pref.font',
+  'theme', 'accent', 'samplesSeeded',
+];
 const LEGACY_GLOBAL = {
   'data.v2': 'flashcards.data.v2',
   'pref.sound': 'flashcards.pref.sound',
@@ -140,7 +144,20 @@ function load() {
   if (!state.decks.some(d => d.id === state.activeId)) state.activeId = state.decks[0].id;
 }
 
-function save() { localStorage.setItem(K('data.v2'), JSON.stringify(state)); }
+function ensureCardIds() {
+  const used = new Set();
+  for (const deck of state.decks) {
+    for (const card of deck.cards) {
+      if (!card.id || used.has(card.id)) card.id = uid('c');
+      used.add(card.id);
+    }
+  }
+}
+
+function save() {
+  ensureCardIds();
+  localStorage.setItem(K('data.v2'), JSON.stringify(state));
+}
 function activeDeck() { return state.decks.find(d => d.id === state.activeId) || state.decks[0]; }
 
 // Seed the built-in sample decks a single time (skips any that already exist by name).
@@ -586,6 +603,106 @@ const startModeBtn = document.getElementById('start-mode-btn');
 const modeEligibility = document.getElementById('mode-eligibility');
 const legacyStudyActions = document.getElementById('legacy-study-actions');
 const hasStudyModePicker = !!(studyModePicker && startModeBtn && modeEligibility && choiceArea);
+const resumeStudyPanel = document.getElementById('resume-study-panel');
+const resumeStudySummary = document.getElementById('resume-study-summary');
+const resumeStudyBtn = document.getElementById('resume-study-btn');
+const discardStudyBtn = document.getElementById('discard-study-btn');
+
+function findCardLocation(card) {
+  if (!card) return null;
+  for (const deck of state.decks) {
+    const index = deck.cards.findIndex(candidate =>
+      candidate === card || (card.id && candidate.id === card.id));
+    if (index >= 0) return { deck, index, card: deck.cards[index] };
+  }
+  return null;
+}
+
+function cardReference(card) {
+  const location = findCardLocation(card);
+  return location ? { deckId: location.deck.id, cardId: location.card.id } : null;
+}
+
+function sameCardReference(a, b) {
+  return !!a && !!b && a.deckId === b.deckId && a.cardId === b.cardId;
+}
+
+function readStudySession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(K('studySession.v1')));
+    return session && Array.isArray(session.order) ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStudySession() {
+  localStorage.removeItem(K('studySession.v1'));
+  if (resumeStudyPanel) resumeStudyPanel.classList.add('hidden');
+}
+
+function resolveStudySession(session = readStudySession()) {
+  if (!session) return null;
+  const cards = [];
+  const refs = [];
+  for (const ref of session.order) {
+    const deck = state.decks.find(item => item.id === ref.deckId);
+    const card = deck?.cards.find(item => item.id === ref.cardId);
+    if (!card) continue;
+    cards.push(card);
+    refs.push(ref);
+  }
+  if (!cards.length) {
+    clearStudySession();
+    return null;
+  }
+  let position = Number.isInteger(session.position) ? session.position : 0;
+  if (session.current) {
+    const currentIndex = refs.findIndex(ref => sameCardReference(ref, session.current));
+    if (currentIndex >= 0) position = currentIndex;
+  }
+  position = Math.max(0, Math.min(position, cards.length - 1));
+  return { ...session, cards, position };
+}
+
+function persistStudySession() {
+  if (!studyCards.length || !order.length) return;
+  const orderedRefs = order.map(index => cardReference(studyCards[index])).filter(Boolean);
+  const current = cardReference(studyCards[order[pos]]);
+  if (!orderedRefs.length || !current) return;
+  const position = orderedRefs.findIndex(ref => sameCardReference(ref, current));
+  localStorage.setItem(K('studySession.v1'), JSON.stringify({
+    version: 1,
+    label: currentStudyLabel,
+    reverse: reverseMode,
+    deckIds: studyDeckIds.slice(),
+    order: orderedRefs,
+    current,
+    position: position >= 0 ? position : 0,
+    updatedAt: Date.now(),
+  }));
+}
+
+function renderResumeStudy() {
+  if (!resumeStudyPanel || !resumeStudySummary) return;
+  const session = resolveStudySession();
+  resumeStudyPanel.classList.toggle('hidden', !session);
+  if (!session) return;
+  resumeStudySummary.textContent =
+    `${session.label || 'Flashcards'} · card ${session.position + 1} of ${session.cards.length}`;
+}
+
+function resumeStudySession() {
+  const session = resolveStudySession();
+  if (!session) {
+    toast('That study session is no longer available.');
+    return;
+  }
+  studyDeckIds = Array.isArray(session.deckIds)
+    ? session.deckIds.filter(id => state.decks.some(deck => deck.id === id))
+    : [];
+  beginSession(session.cards, session.label || 'Flashcards', session.reverse, session.position);
+}
 
 function openDeckPicker() {
   matchSessionToken++;
@@ -599,7 +716,14 @@ function openDeckPicker() {
   const ss = document.getElementById('search-status');
   if (ss) ss.textContent = '';
   renderDeckList();
+  renderResumeStudy();
 }
+
+if (resumeStudyBtn) resumeStudyBtn.addEventListener('click', resumeStudySession);
+if (discardStudyBtn) discardStudyBtn.addEventListener('click', () => {
+  clearStudySession();
+  toast('Saved study position dismissed.');
+});
 
 function setStudyMode(mode) {
   if (!hasStudyModePicker) return;
@@ -854,6 +978,11 @@ function attachSwipeToActions(row, swipe, item) {
 const cardManagerList = document.getElementById('card-manager-list');
 const cardManagerTitle = document.getElementById('card-manager-title');
 const cardManagerEmpty = document.getElementById('card-manager-empty');
+const cardManagerNoResults = document.getElementById('card-manager-no-results');
+const cardManagerSearch = document.getElementById('card-manager-search');
+const cardManagerSearchClear = document.getElementById('card-manager-search-clear');
+const cardManagerSearchStatus = document.getElementById('card-manager-search-status');
+if (cardManagerSearch) cardManagerSearch.closest('.card-manager-search')?.classList.remove('hidden');
 const cardEditorModal = document.getElementById('card-editor-modal');
 const cardEditorTitle = document.getElementById('card-editor-title');
 const cardEditorQuestion = document.getElementById('card-editor-question');
@@ -867,6 +996,7 @@ const bulletEditorList = document.getElementById('bullet-editor-list');
 const bulletEditorStatus = document.getElementById('bullet-editor-status');
 let cardManagerDeckId = null;
 let cardEditorIndex = -1;
+let cardEditorOrigin = 'manager';
 let bulletEditorTarget = null;
 let bulletEditorItems = [];
 
@@ -886,6 +1016,8 @@ function openCardManager(deckId) {
   const deck = state.decks.find(item => item.id === deckId);
   if (!deck) return;
   cardManagerDeckId = deck.id;
+  if (cardManagerSearch) cardManagerSearch.value = '';
+  if (cardManagerSearchClear) cardManagerSearchClear.classList.add('hidden');
   state.activeId = deck.id;
   save();
   deckPicker.classList.add('hidden');
@@ -905,10 +1037,24 @@ function renderCardManager() {
   }
   cardManagerTitle.textContent = `${deck.name} · ${deck.cards.length} card${deck.cards.length === 1 ? '' : 's'}`;
   cardManagerList.innerHTML = '';
-  cardManagerEmpty.classList.toggle('hidden', deck.cards.length > 0);
-  cardManagerList.classList.toggle('hidden', deck.cards.length === 0);
+  const term = cardManagerSearch?.value.trim().toLowerCase() || '';
+  const matches = deck.cards.map((card, index) => ({ card, index })).filter(({ card }) =>
+    !term ||
+    accessibleRichText(card.q).toLowerCase().includes(term) ||
+    accessibleRichText(card.a).toLowerCase().includes(term));
+  const deckIsEmpty = deck.cards.length === 0;
+  const noMatches = !deckIsEmpty && matches.length === 0;
+  cardManagerEmpty.classList.toggle('hidden', !deckIsEmpty);
+  if (cardManagerNoResults) cardManagerNoResults.classList.toggle('hidden', !noMatches);
+  cardManagerList.classList.toggle('hidden', deckIsEmpty || noMatches);
+  if (cardManagerSearchStatus) {
+    cardManagerSearchStatus.textContent = term
+      ? `${matches.length} matching card${matches.length === 1 ? '' : 's'}`
+      : '';
+  }
+  if (cardManagerSearchClear) cardManagerSearchClear.classList.toggle('hidden', !term);
 
-  deck.cards.forEach((card, index) => {
+  matches.forEach(({ card, index }) => {
     const item = document.createElement('li');
     const button = document.createElement('button');
     button.type = 'button';
@@ -963,24 +1109,26 @@ function cardEditorTextToStored(textarea) {
   return items.length ? escapeListSeparators(items[0]) : '';
 }
 
-function openCardEditor(index = -1) {
+function openCardEditor(index = -1, origin = 'manager') {
   if (!cardEditorModal) return;
   const deck = managedDeck();
   if (!deck) return;
   const card = index >= 0 ? deck.cards[index] : null;
+  cardEditorOrigin = origin;
   cardEditorIndex = card ? index : -1;
-  cardEditorTitle.textContent = card ? 'Edit card' : 'Add card';
+  cardEditorTitle.textContent = origin === 'study' ? 'Edit study card' : (card ? 'Edit card' : 'Add card');
   setCardEditorText(cardEditorQuestion, card ? card.q : '');
   setCardEditorText(cardEditorAnswer, card ? card.a : '');
   cardEditorStatus.textContent = '';
-  cardEditorDuplicate.classList.toggle('hidden', !card);
-  cardEditorDelete.classList.toggle('hidden', !card);
+  cardEditorDuplicate.classList.toggle('hidden', !card || origin === 'study');
+  cardEditorDelete.classList.toggle('hidden', !card || origin === 'study');
   cardEditorModal.classList.remove('hidden');
   setTimeout(() => cardEditorQuestion.focus(), 0);
 }
 
 function closeCardEditor() {
   if (cardEditorModal) cardEditorModal.classList.add('hidden');
+  cardEditorOrigin = 'manager';
 }
 
 function wrapSelectedText(textarea, marker) {
@@ -1130,6 +1278,7 @@ if (bulletEditorModal) {
 function saveCardEditor() {
   const deck = managedDeck();
   if (!deck) return;
+  const editingStudyCard = cardEditorOrigin === 'study';
   const q = cardEditorTextToStored(cardEditorQuestion);
   const a = cardEditorTextToStored(cardEditorAnswer);
   if (!q || !a) {
@@ -1138,14 +1287,19 @@ function saveCardEditor() {
   }
   if (cardEditorIndex >= 0) {
     const existing = deck.cards[cardEditorIndex];
-    deck.cards[cardEditorIndex] = { ...existing, q, a };
+    Object.assign(existing, { q, a });
   } else {
     deck.cards.push({ q, a });
   }
   save();
   syncBulkEditorForDeck(deck);
   renderDeckOptions();
-  renderCardManager();
+  if (editingStudyCard) {
+    showCard();
+    persistStudySession();
+  } else {
+    renderCardManager();
+  }
   closeCardEditor();
   toast(cardEditorIndex >= 0 ? 'Card updated.' : 'Card added.');
 }
@@ -1178,6 +1332,12 @@ function deleteCardEditor() {
 
 const cardManagerBack = document.getElementById('card-manager-back');
 if (cardManagerBack) cardManagerBack.addEventListener('click', openDeckPicker);
+if (cardManagerSearch) cardManagerSearch.addEventListener('input', renderCardManager);
+if (cardManagerSearchClear) cardManagerSearchClear.addEventListener('click', () => {
+  cardManagerSearch.value = '';
+  renderCardManager();
+  cardManagerSearch.focus();
+});
 const cardManagerAdd = document.getElementById('card-manager-add');
 if (cardManagerAdd) cardManagerAdd.addEventListener('click', () => openCardEditor());
 const cardManagerEmptyAdd = document.getElementById('card-manager-empty-add');
@@ -1323,16 +1483,19 @@ function startStudy(ids, onlyFlagged) {
   beginSession(cards, label, reverse);
 }
 
-// Shared entry point for deck-based, flagged, and search sessions.
-function beginSession(cards, label, reverse) {
+// Shared entry point for deck-based, flagged, search, and resumed sessions.
+function beginSession(cards, label, reverse, resumePosition = 0) {
   studyCards = cards;
+  currentStudyLabel = label;
   reverseMode = !!reverse;
   document.getElementById('study-deck-label').textContent =
     (reverseMode ? '↔ ' : '') + label;
   document.getElementById('front-label').textContent = reverseMode ? 'Answer' : 'Question';
   document.getElementById('back-label').textContent = reverseMode ? 'Question' : 'Answer';
   buildOrder(false);
+  pos = Math.max(0, Math.min(resumePosition, order.length - 1));
   deckPicker.classList.add('hidden');
+  if (cardManager) cardManager.classList.add('hidden');
   studyArea.classList.remove('hidden');
   startTimer();
   showCard();
@@ -1345,6 +1508,21 @@ const answerEl = document.getElementById('card-answer');
 const progressText = document.getElementById('progress-text');
 const progressFill = document.getElementById('progress-fill');
 const flagCheck = document.getElementById('flag-check');
+const studyEditCardBtn = document.getElementById('study-edit-card');
+if (studyEditCardBtn) studyEditCardBtn.classList.remove('hidden');
+
+function openStudyCardEditor() {
+  if (!studyCards.length || !order.length) return;
+  const location = findCardLocation(studyCards[order[pos]]);
+  if (!location) {
+    toast('This card is no longer available to edit.');
+    return;
+  }
+  cardManagerDeckId = location.deck.id;
+  openCardEditor(location.index, 'study');
+}
+
+if (studyEditCardBtn) studyEditCardBtn.addEventListener('click', openStudyCardEditor);
 
 /* ---------- Rich card renderer (safe subset: bold/italic/colors/shapes/flags) ---------- */
 const NAMED_COLORS = {
@@ -2224,12 +2402,14 @@ function showCard() {
   flagCheck.checked = !!card.flagged;
   progressText.textContent = `${pos + 1} / ${order.length}`;
   progressFill.style.width = `${((pos + 1) / order.length) * 100}%`;
+  persistStudySession();
 }
 
 flagCheck.addEventListener('change', () => {
   if (studyCards.length === 0) return;
   studyCards[order[pos]].flagged = flagCheck.checked;
   save();
+  persistStudySession();
 });
 
 function flip() {
@@ -2262,6 +2442,8 @@ cardEl.addEventListener('touchend', e => {
 });
 document.addEventListener('keydown', e => {
   if (!views.study.classList.contains('active') || studyArea.classList.contains('hidden')) return;
+  if (e.target.matches('input, textarea, select, [contenteditable="true"]') ||
+      !cardEditorModal.classList.contains('hidden')) return;
   if (e.key === 'ArrowRight') next();
   if (e.key === 'ArrowLeft') prev();
 });
@@ -2405,7 +2587,10 @@ const TIPS = [
     text: 'On the Import tab, tap “Import file” to load a Word .docx, a .csv/.txt list, or a .json deck. Review duplicate warnings before saving. Use “Export selected deck” to create a portable backup or sharing file.' },
   { ico: '✏️', view: 'study',
     title: 'Edit a deck or individual card',
-    text: 'On the Study tab, swipe a deck left (or hover on a computer) and choose Edit. This opens that deck’s card list. Tap a card to change it, or add, duplicate, and delete cards.' },
+    text: 'While studying Flashcards, tap “Edit card” to correct the card without losing your place. From the deck list, choose Edit to search and manage every card in that deck.' },
+  { ico: '⏯️', view: 'study',
+    title: 'Resume a study session',
+    text: 'Flashcards remembers the exact card and order when you leave. Return to the Study tab and tap Resume to continue where you stopped.' },
   { ico: '↕️', view: 'study',
     title: 'Reorder decks in the Study list',
     text: 'On the Study tab, tap the three-line handle on the left of a deck. Use the up and down buttons to move it to the position you want in the list.' },
@@ -2576,7 +2761,11 @@ const FAQ = [
   ['Why can\u2019t I import some PDFs or Word files?',
    'Scanned or image-only documents contain pictures of text, not real text, so nothing can be extracted without OCR. Convert them to a text-based .docx (open in Word) first, then import.'],
   ['How do decks work?',
-   'Manage decks on the Import tab (create, rename, delete) and pick which deck to edit from the dropdown. On the Study tab, swipe a deck left and choose Edit to manage its individual cards. Tap the three-line handle to reveal controls that move the deck up or down.'],
+   'Manage decks on the Import tab (create, rename, delete) and pick which deck to edit from the dropdown. On the Study tab, swipe a deck left and choose Edit to manage its individual cards. Search that card list by question or answer, and tap the three-line handle in the deck list to reveal controls that move the deck up or down.'],
+  ['Can I edit a card without leaving my study session?',
+   'Yes. While studying in Flashcards mode, tap “Edit card,” make the change, and save. The updated card appears immediately and your study position is preserved.'],
+  ['Can I continue a Flashcards session later?',
+   'Yes. Flashcards saves the current card and study order on this device. When you return to the Study tab, use the Resume panel to continue where you left off, or dismiss it and start a new session.'],
   ['How does duplicate detection work when importing?',
    'The import preview identifies exact question-and-answer duplicates, repeated questions, and repeated answers. Exact duplicates can be skipped automatically. Repeated questions and answers remain available because they may be intentional; they are warnings only.'],
   ['How do I study more than one deck at once?',
@@ -3181,7 +3370,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v50');
+      waitingWorker.postMessage('activate-v51');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }

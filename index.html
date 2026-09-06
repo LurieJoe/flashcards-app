@@ -147,6 +147,17 @@
           Choose how to study
         </h2>
 
+        <div id="resume-study-panel" class="resume-study-panel hidden">
+          <div>
+            <strong>Continue where you left off</strong>
+            <p id="resume-study-summary"></p>
+          </div>
+          <div class="resume-study-actions">
+            <button id="resume-study-btn" type="button" class="btn primary">Resume</button>
+            <button id="discard-study-btn" type="button" class="btn small">Dismiss</button>
+          </div>
+        </div>
+
         <div id="study-mode-picker" class="study-mode-picker" role="radiogroup" aria-label="Study mode" hidden>
           <button type="button" class="study-mode-option active" data-study-mode="flashcards"
                   role="radio" aria-checked="true">
@@ -216,9 +227,18 @@
           <button id="card-manager-add" class="btn small">+ Add card</button>
         </div>
         <p class="help card-manager-help">Tap a card to edit it.</p>
+        <div class="card-manager-search hidden">
+          <input id="card-manager-search" type="search" inputmode="search"
+                 placeholder="Search questions or answers…" aria-label="Search cards in this deck" />
+          <button id="card-manager-search-clear" type="button" class="btn small hidden">Clear</button>
+        </div>
+        <p id="card-manager-search-status" class="search-status" aria-live="polite"></p>
         <div id="card-manager-empty" class="empty hidden">
           <p>This deck does not have any cards yet.</p>
           <button id="card-manager-empty-add" class="btn primary">Add the first card</button>
+        </div>
+        <div id="card-manager-no-results" class="empty hidden">
+          <p>No cards match this search.</p>
         </div>
         <ol id="card-manager-list" class="card-manager-list"></ol>
       </div>
@@ -228,6 +248,7 @@
         <div class="study-top">
           <button id="back-to-decks" class="btn small">&#8249; Decks</button>
           <span id="study-deck-label" class="study-deck-label"></span>
+          <button id="study-edit-card" class="btn small hidden">Edit card</button>
           <button id="timer" class="timer hidden" title="Tap to pause/resume">0:00</button>
         </div>
         <div class="study-mascot" aria-hidden="true">

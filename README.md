@@ -82,6 +82,11 @@ Three tabs — **Home**, **Study**, and **Import**:
     studies the selected decks together. Empty decks are disabled; "Select all" is
     available. **Reverse** applies only to Flashcards; it is hidden in the game modes.
   - Tap a card to flip; swipe or use Prev/Next; **Shuffle** to randomize.
+  - **Resume where you left off:** Flashcards saves the exact card and study order
+    per profile. If you leave the Study tab or close the app, the Study picker offers
+    a **Resume** panel so you can continue instead of starting over.
+  - **Edit while studying:** tap **Edit card** in a Flashcards session, correct the
+    question or answer, and save without leaving the session or losing your position.
   - **Matching Pairs:** select one deck and play with five applicable cards at a
     time. The app measures both sides against the phone-sized tiles and enables
     the game only when at least five cards are applicable. Questions stay in the
@@ -106,7 +111,8 @@ Three tabs — **Home**, **Study**, and **Import**:
     reveal **Edit**, **Share**, and **Hide**.
     - **Edit** opens the individual card manager. Tap a card to change its question
       or answer while preserving its review flag, or add, duplicate, and delete cards.
-      The bulk editor remains available on the Import tab for larger changes.
+      Search within the deck by question or answer to quickly locate a card. The bulk
+      editor remains available on the Import tab for larger changes.
     - **Share** sends the deck as a `.json` file via the native share sheet on
       iPhone/Android (AirDrop, Messages, Mail, etc.); on desktop it downloads the
       `.json` to attach and send. The recipient imports it on the Import tab.
