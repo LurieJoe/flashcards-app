@@ -523,6 +523,23 @@ main {
 .search-row .btn { flex: 0 0 auto; }
 .search-status { color: var(--muted); font-size: 13px; min-height: 1em; margin: 2px 0 0; }
 
+.backup-restore {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--surface-2);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.backup-restore h3 { margin: 0 0 6px; font-size: 16px; }
+.backup-restore .help { margin: 0 0 12px; }
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.backup-actions .btn { flex: 1 1 180px; text-align: center; }
+#backup-status { margin: 8px 0 0; min-height: 0; }
+
 /* Auto-generate a deck */
 .generator {
   background: var(--surface);
@@ -912,6 +929,46 @@ main {
   font-size: 15px;
 }
 .import-skip-row { margin-top: 14px; }
+
+.restore-preview-card { max-width: 520px; }
+.restore-preview-summary { margin: 0 0 4px; font-weight: 700; }
+.restore-options {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 8px;
+  padding: 0;
+  border: 0;
+}
+.restore-options legend {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.restore-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.restore-option:has(input:checked) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+}
+.restore-option input { margin-top: 3px; accent-color: var(--primary); }
+.restore-option span,
+.restore-option strong,
+.restore-option small { display: block; }
+.restore-option small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
 
 /* Update-ready notification */
 .update-ready-banner {

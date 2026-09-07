@@ -379,6 +379,19 @@
         <span class="import-hint">.docx, .csv, .txt, or a deck .json</span>
       </div>
 
+      <section id="backup-restore" class="backup-restore hidden">
+        <h3>Backup &amp; restore</h3>
+        <p class="help">
+          Save every profile, deck, card, flag, preference, and study position in one file.
+        </p>
+        <div class="backup-actions">
+          <button id="backup-all-btn" type="button" class="btn">Download full backup</button>
+          <label class="btn" for="restore-file-input">Restore backup</label>
+          <input id="restore-file-input" type="file" accept=".json,application/json" hidden />
+        </div>
+        <p id="backup-status" class="status" aria-live="polite"></p>
+      </section>
+
       <p id="edit-status" class="status"></p>
 
       <button type="button" id="manual-editor-toggle" class="btn manual-editor-toggle hidden"
@@ -641,6 +654,43 @@
       <div class="import-preview-actions">
         <button id="import-preview-cancel" class="btn">Cancel</button>
         <button id="import-preview-confirm" class="btn primary">Import cards</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="restore-preview-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
+       aria-labelledby="restore-preview-title">
+    <div class="modal-card restore-preview-card">
+      <div class="modal-head">
+        <svg class="modal-flipper" aria-hidden="true"><use href="#flipperMascot" /></svg>
+        <h2 id="restore-preview-title">Restore backup</h2>
+        <button id="restore-preview-close" class="modal-x" aria-label="Close">&times;</button>
+      </div>
+      <p id="restore-preview-summary" class="restore-preview-summary"></p>
+      <p id="restore-preview-date" class="modal-note"></p>
+
+      <fieldset class="restore-options">
+        <legend>How should this backup be restored?</legend>
+        <label class="restore-option">
+          <input type="radio" name="restore-mode" value="replace" checked />
+          <span>
+            <strong>Replace everything</strong>
+            <small>Recreate the backup exactly. Best for moving to a new device or domain.</small>
+          </span>
+        </label>
+        <label class="restore-option">
+          <input type="radio" name="restore-mode" value="merge" />
+          <span>
+            <strong>Merge as new profiles</strong>
+            <small>Keep current data and add each backed-up profile as a separate restored profile.</small>
+          </span>
+        </label>
+      </fieldset>
+
+      <p id="restore-preview-status" class="modal-note" aria-live="polite"></p>
+      <div class="import-preview-actions">
+        <button id="restore-preview-cancel" type="button" class="btn">Cancel</button>
+        <button id="restore-preview-confirm" type="button" class="btn primary">Restore backup</button>
       </div>
     </div>
   </div>

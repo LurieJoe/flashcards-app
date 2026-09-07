@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v51';
+const APP_VERSION = 'v52';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -2585,6 +2585,9 @@ const TIPS = [
   { ico: '📄', view: 'edit',
     title: 'Import a file to create a deck',
     text: 'On the Import tab, tap “Import file” to load a Word .docx, a .csv/.txt list, or a .json deck. Review duplicate warnings before saving. Use “Export selected deck” to create a portable backup or sharing file.' },
+  { ico: '💾', view: 'edit',
+    title: 'Back up or move everything',
+    text: 'On the Import tab, use “Download full backup” to save every profile, deck, preference, flag, and study position. Restore can replace everything exactly or merge the backup as new profiles.' },
   { ico: '✏️', view: 'study',
     title: 'Edit a deck or individual card',
     text: 'While studying Flashcards, tap “Edit card” to correct the card without losing your place. From the deck list, choose Edit to search and manage every card in that deck.' },
@@ -2758,6 +2761,8 @@ const FAQ = [
    'Yes. Once installed to your home screen, the app runs fully offline. You only need a connection the first time you open it (and to fetch updates).'],
   ['How do I import questions?',
    'Go to the Import tab and tap \u201cImport file\u201d. You can load a Word .docx, a .csv/.txt list, or a deck .json exported from this app. Review the preview and duplicate warnings, then create a new deck, add the cards to an existing deck, or replace an existing deck. You can also type or paste cards as \u201cquestion | answer\u201d, one per line.'],
+  ['How do I back up or move all of my data?',
+   'On the Import tab, choose \u201cDownload full backup\u201d. The file includes every profile, deck, card, manual edit, flag, preference, deck order, and saved study position. To restore it, choose \u201cRestore backup\u201d, then either replace everything for an exact migration or merge the backup as new profiles without overwriting current data.'],
   ['Why can\u2019t I import some PDFs or Word files?',
    'Scanned or image-only documents contain pictures of text, not real text, so nothing can be extracted without OCR. Convert them to a text-based .docx (open in Word) first, then import.'],
   ['How do decks work?',
@@ -2823,7 +2828,7 @@ function renderPrivacy() {
       <li><strong>Files are processed on-device.</strong> When you import a .docx, .csv, or .json, it is read entirely within the app on your phone. The file\u2019s contents are not sent anywhere.</li>
       <li><strong>No servers, no cookies.</strong> The app is a static page served over HTTPS and then cached for offline use. It makes no background network calls with your data.</li>
       <li><strong>You are in control.</strong> Delete a card, clear a deck, or remove the app to erase your data at any time. Uninstalling or clearing your browser storage permanently deletes everything.</li>
-      <li><strong>Sharing is user-initiated.</strong> Nothing is shared unless you tap <em>Share</em> on a deck. Then that deck (its name and cards) is handed to whatever destination <em>you</em> pick — AirDrop, Messages, email, or a saved file. The app has no access to where it goes, and it only leaves your device because you chose to send it.</li>
+      <li><strong>Sharing and backups are user-initiated.</strong> Nothing leaves the app unless you choose to share, export, or back it up. Deck exports and full backups are created locally and handed only to the destination <em>you</em> choose. The app cannot see where you save or send them.</li>
       <li><strong>Feedback is optional and separate.</strong> If you choose to send feedback, it opens GitHub in a new tab; only what you type there is shared, and only because you chose to send it.</li>
     </ul>
     <p class="privacy-foot">Because all data is stored locally, no one \u2014 including the developer \u2014 can see your decks or study activity.</p>
@@ -2937,6 +2942,421 @@ async function shareDeck(d) {
 }
 
 document.getElementById('export-btn').addEventListener('click', () => downloadDeck(activeDeck()));
+
+/* ---------- Full-device backup and restore ---------- */
+const BACKUP_FORMAT = 'flashcard-flipper-backup';
+const BACKUP_VERSION = 1;
+const MAX_BACKUP_BYTES = 50 * 1024 * 1024;
+const backupRestoreSection = document.getElementById('backup-restore');
+const backupAllBtn = document.getElementById('backup-all-btn');
+const restoreFileInput = document.getElementById('restore-file-input');
+const backupStatus = document.getElementById('backup-status');
+const restorePreviewModal = document.getElementById('restore-preview-modal');
+const restorePreviewSummary = document.getElementById('restore-preview-summary');
+const restorePreviewDate = document.getElementById('restore-preview-date');
+const restorePreviewStatus = document.getElementById('restore-preview-status');
+let pendingRestore = null;
+
+if (backupRestoreSection) backupRestoreSection.classList.remove('hidden');
+
+function setBackupStatus(message, ok = true) {
+  if (!backupStatus) return;
+  backupStatus.style.color = ok ? 'var(--muted)' : 'var(--danger)';
+  backupStatus.textContent = message;
+}
+
+function profileStorageValues(profileId) {
+  const prefix = `flashcards.p.${profileId}.`;
+  const values = {};
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(prefix)) values[key.slice(prefix.length)] = localStorage.getItem(key);
+  }
+  return values;
+}
+
+function validStoredId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+}
+
+function validProfileId(value) {
+  return validStoredId(value) &&
+    !['__proto__', 'prototype', 'constructor'].includes(value.toLowerCase());
+}
+
+function referenceExists(data, reference) {
+  if (!reference || typeof reference !== 'object') return false;
+  const deck = data.decks.find(item => item.id === reference.deckId);
+  return !!deck?.cards.some(card => card.id === reference.cardId);
+}
+
+function normalizeBackupProfileValues(values) {
+  const data = JSON.parse(values['data.v2']);
+  const activeDeck = data.decks.find(deck => deck.id === data.activeId) || data.decks[0];
+  const deckIds = new Set();
+  const cardIds = new Set();
+  for (const deck of data.decks) {
+    if (!validStoredId(deck.id) || deckIds.has(deck.id)) deck.id = uid('d');
+    deckIds.add(deck.id);
+    for (const card of deck.cards) {
+      if (!validStoredId(card.id) || cardIds.has(card.id)) card.id = uid('c');
+      cardIds.add(card.id);
+    }
+  }
+  if (activeDeck) data.activeId = activeDeck.id;
+  values['data.v2'] = JSON.stringify(data);
+
+  const sessionRaw = values['studySession.v1'];
+  if (!sessionRaw) return;
+  try {
+    const session = JSON.parse(sessionRaw);
+    if (!session || !Array.isArray(session.order)) {
+      delete values['studySession.v1'];
+      return;
+    }
+    session.order = session.order.filter(reference => referenceExists(data, reference));
+    if (!session.order.length) {
+      delete values['studySession.v1'];
+      return;
+    }
+    const currentIndex = referenceExists(data, session.current)
+      ? session.order.findIndex(reference => sameCardReference(reference, session.current))
+      : -1;
+    session.position = currentIndex >= 0
+      ? currentIndex
+      : Math.max(0, Math.min(Number.isInteger(session.position) ? session.position : 0,
+        session.order.length - 1));
+    session.current = session.order[session.position];
+    session.deckIds = Array.isArray(session.deckIds)
+      ? session.deckIds.filter(id => deckIds.has(id))
+      : [];
+    values['studySession.v1'] = JSON.stringify(session);
+  } catch {
+    delete values['studySession.v1'];
+  }
+}
+
+function backupCounts(registry, storage) {
+  let decks = 0;
+  let cards = 0;
+  for (const profile of registry.profiles) {
+    const raw = storage[profile.id]?.['data.v2'];
+    if (!raw) continue;
+    const data = JSON.parse(raw);
+    decks += data.decks.length;
+    cards += data.decks.reduce((total, deck) => total + deck.cards.length, 0);
+  }
+  return { profiles: registry.profiles.length, decks, cards };
+}
+
+function createFullBackup() {
+  save();
+  saveProfiles();
+  const registry = JSON.parse(JSON.stringify(profiles));
+  const storage = Object.create(null);
+  for (const profile of registry.profiles) {
+    storage[profile.id] = profileStorageValues(profile.id);
+    normalizeBackupProfileValues(storage[profile.id]);
+  }
+  return {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    createdAt: new Date().toISOString(),
+    appVersion: APP_VERSION,
+    profiles: registry,
+    storage,
+    counts: backupCounts(registry, storage),
+  };
+}
+
+function backupFilename() {
+  const date = new Date().toISOString().slice(0, 10);
+  return `Flashcard-Flipper-Backup-${date}.json`;
+}
+
+function downloadFullBackup() {
+  try {
+    const backup = createFullBackup();
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = backupFilename();
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setBackupStatus(
+      `Backed up ${backup.counts.profiles} profile${backup.counts.profiles === 1 ? '' : 's'}, ` +
+      `${backup.counts.decks} deck${backup.counts.decks === 1 ? '' : 's'}, and ` +
+      `${backup.counts.cards} card${backup.counts.cards === 1 ? '' : 's'}.`);
+  } catch (error) {
+    setBackupStatus(`Backup failed. ${error.message}`, false);
+  }
+}
+
+function assertBackup(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function validateProfileData(raw, profileName) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(`The deck data for “${profileName}” is not valid JSON.`);
+  }
+  assertBackup(data && typeof data === 'object' && Array.isArray(data.decks),
+    `The deck data for “${profileName}” is incomplete.`);
+  assertBackup(data.decks.length > 0, `The profile “${profileName}” does not contain a deck.`);
+  const deckIds = new Set();
+  const cardIds = new Set();
+  for (const deck of data.decks) {
+    assertBackup(deck && typeof deck === 'object' && validStoredId(deck.id) &&
+      typeof deck.name === 'string' && Array.isArray(deck.cards),
+      `A deck in “${profileName}” is invalid.`);
+    assertBackup(!deckIds.has(deck.id), `The profile “${profileName}” contains duplicate deck identifiers.`);
+    deckIds.add(deck.id);
+    for (const card of deck.cards) {
+      assertBackup(card && typeof card === 'object' &&
+        validStoredId(card.id) && typeof card.q === 'string' && typeof card.a === 'string',
+      `A card in “${profileName}” is invalid.`);
+      assertBackup(!cardIds.has(card.id), `The profile “${profileName}” contains duplicate card identifiers.`);
+      cardIds.add(card.id);
+    }
+  }
+  assertBackup(validStoredId(data.activeId) && deckIds.has(data.activeId),
+    `The profile “${profileName}” has an invalid active deck.`);
+  return data;
+}
+
+function validateStoredStudySession(raw, data, profileName) {
+  let session;
+  try {
+    session = JSON.parse(raw);
+  } catch {
+    throw new Error(`The saved study position for “${profileName}” is invalid.`);
+  }
+  assertBackup(session && Array.isArray(session.order) && session.order.length > 0,
+    `The saved study position for “${profileName}” is incomplete.`);
+  for (const reference of session.order) {
+    assertBackup(referenceExists(data, reference),
+      `The saved study position for “${profileName}” refers to a missing card.`);
+  }
+  if (session.current) {
+    assertBackup(referenceExists(data, session.current) &&
+      session.order.some(reference => sameCardReference(reference, session.current)),
+    `The current study card for “${profileName}” is invalid.`);
+  }
+  assertBackup(Number.isInteger(session.position) &&
+    session.position >= 0 && session.position < session.order.length,
+  `The study position for “${profileName}” is out of range.`);
+}
+
+function validateFullBackup(value) {
+  assertBackup(value && typeof value === 'object', 'This file is not a Flashcard Flipper backup.');
+  assertBackup(value.format === BACKUP_FORMAT, 'This is a deck export, not a full backup.');
+  assertBackup(value.version === BACKUP_VERSION, 'This backup version is not supported.');
+  const registry = value.profiles;
+  assertBackup(registry && Array.isArray(registry.profiles) && registry.profiles.length > 0,
+    'The backup does not contain any profiles.');
+  assertBackup(value.storage && typeof value.storage === 'object' && !Array.isArray(value.storage),
+    'The backup is missing profile data.');
+
+  const profileIds = new Set();
+  const sanitizedProfiles = [];
+  for (const profile of registry.profiles) {
+    assertBackup(profile && typeof profile === 'object', 'A profile in the backup is invalid.');
+    assertBackup(validProfileId(profile.id),
+      'A profile identifier in the backup is invalid.');
+    assertBackup(!profileIds.has(profile.id), 'The backup contains a duplicate profile identifier.');
+    assertBackup(typeof profile.name === 'string' && profile.name.trim(),
+      'A profile in the backup is missing its name.');
+    assertBackup(PROFILE_COLORS.includes(profile.color),
+      `The profile “${profile.name}” has an invalid color.`);
+    profileIds.add(profile.id);
+    sanitizedProfiles.push({
+      id: profile.id,
+      name: profile.name.trim().slice(0, 24),
+      color: profile.color,
+    });
+
+    assertBackup(Object.prototype.hasOwnProperty.call(value.storage, profile.id),
+      `The backup is missing data for “${profile.name}”.`);
+    const values = value.storage[profile.id];
+    assertBackup(values && typeof values === 'object' && !Array.isArray(values),
+      `The backup is missing data for “${profile.name}”.`);
+    for (const [suffix, storedValue] of Object.entries(values)) {
+      assertBackup(/^[A-Za-z0-9._-]{1,128}$/.test(suffix) && typeof storedValue === 'string',
+        `The backup contains an invalid setting for “${profile.name}”.`);
+    }
+    assertBackup(typeof values['data.v2'] === 'string',
+      `The backup is missing decks for “${profile.name}”.`);
+    const data = validateProfileData(values['data.v2'], profile.name);
+    if (typeof values['studySession.v1'] === 'string') {
+      validateStoredStudySession(values['studySession.v1'], data, profile.name);
+    }
+  }
+  assertBackup(profileIds.has(registry.activeId), 'The backup has an invalid active profile.');
+
+  const created = new Date(value.createdAt);
+  const counts = backupCounts(registry, value.storage);
+  return {
+    profiles: { profiles: sanitizedProfiles, activeId: registry.activeId },
+    storage: JSON.parse(JSON.stringify(value.storage)),
+    createdAt: Number.isNaN(created.getTime()) ? null : created,
+    appVersion: typeof value.appVersion === 'string' ? value.appVersion : '',
+    counts,
+  };
+}
+
+function managedStorageSnapshot() {
+  const snapshot = {};
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key === PROFILES_KEY || key?.startsWith('flashcards.p.')) {
+      snapshot[key] = localStorage.getItem(key);
+    }
+  }
+  return snapshot;
+}
+
+function clearManagedStorage() {
+  const keys = [];
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key === PROFILES_KEY || key?.startsWith('flashcards.p.')) keys.push(key);
+  }
+  keys.forEach(key => localStorage.removeItem(key));
+}
+
+function applyManagedStorage(entries) {
+  for (const [key, value] of Object.entries(entries)) localStorage.setItem(key, value);
+}
+
+function storageTransaction(operation) {
+  const before = managedStorageSnapshot();
+  try {
+    operation();
+  } catch (error) {
+    clearManagedStorage();
+    applyManagedStorage(before);
+    throw error;
+  }
+}
+
+function backupStorageEntries(backup) {
+  const entries = { [PROFILES_KEY]: JSON.stringify(backup.profiles) };
+  for (const profile of backup.profiles.profiles) {
+    for (const [suffix, value] of Object.entries(backup.storage[profile.id])) {
+      entries[profileKey(profile.id, suffix)] = value;
+    }
+  }
+  return entries;
+}
+
+function uniqueRestoredProfileName(name, names) {
+  const base = name.trim().slice(0, 24) || 'Restored profile';
+  if (!names.has(base.toLowerCase())) return base;
+  let number = 1;
+  let candidate;
+  do {
+    const suffix = number === 1 ? ' (restored)' : ` (restored ${number})`;
+    candidate = base.slice(0, Math.max(1, 24 - suffix.length)) + suffix;
+    number++;
+  } while (names.has(candidate.toLowerCase()));
+  return candidate;
+}
+
+function replaceFromBackup(backup) {
+  storageTransaction(() => {
+    clearManagedStorage();
+    applyManagedStorage(backupStorageEntries(backup));
+  });
+}
+
+function mergeFromBackup(backup) {
+  storageTransaction(() => {
+    const merged = JSON.parse(JSON.stringify(profiles));
+    const names = new Set(merged.profiles.map(profile => profile.name.toLowerCase()));
+    for (const source of backup.profiles.profiles) {
+      let newId;
+      do { newId = uid('p'); } while (merged.profiles.some(profile => profile.id === newId));
+      const name = uniqueRestoredProfileName(source.name, names);
+      names.add(name.toLowerCase());
+      merged.profiles.push({ ...source, id: newId, name });
+      for (const [suffix, value] of Object.entries(backup.storage[source.id])) {
+        localStorage.setItem(profileKey(newId, suffix), value);
+      }
+    }
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(merged));
+  });
+}
+
+function closeRestorePreview() {
+  if (restorePreviewModal) restorePreviewModal.classList.add('hidden');
+  if (restorePreviewStatus) restorePreviewStatus.textContent = '';
+  pendingRestore = null;
+}
+
+function showRestorePreview(backup) {
+  pendingRestore = backup;
+  restorePreviewSummary.textContent =
+    `${backup.counts.profiles} profile${backup.counts.profiles === 1 ? '' : 's'}, ` +
+    `${backup.counts.decks} deck${backup.counts.decks === 1 ? '' : 's'}, and ` +
+    `${backup.counts.cards} card${backup.counts.cards === 1 ? '' : 's'}`;
+  restorePreviewDate.textContent = backup.createdAt
+    ? `Created ${backup.createdAt.toLocaleString()}${backup.appVersion ? ` with ${backup.appVersion}` : ''}.`
+    : (backup.appVersion ? `Created with ${backup.appVersion}.` : '');
+  restorePreviewStatus.textContent = '';
+  restorePreviewModal.classList.remove('hidden');
+}
+
+async function chooseRestoreFile(file) {
+  if (!file) return;
+  setBackupStatus('');
+  try {
+    if (file.size > MAX_BACKUP_BYTES) throw new Error('This backup is larger than 50 MB.');
+    const parsed = JSON.parse(await file.text());
+    showRestorePreview(validateFullBackup(parsed));
+  } catch (error) {
+    setBackupStatus(error instanceof SyntaxError
+      ? 'This file does not contain valid JSON.'
+      : error.message, false);
+  } finally {
+    restoreFileInput.value = '';
+  }
+}
+
+function confirmRestore() {
+  if (!pendingRestore) return;
+  const mode = document.querySelector('input[name="restore-mode"]:checked')?.value || 'replace';
+  if (mode === 'replace' &&
+      !confirm('Replace every current Flashcard Flipper profile, deck, and setting with this backup?')) {
+    return;
+  }
+  try {
+    if (mode === 'merge') mergeFromBackup(pendingRestore);
+    else replaceFromBackup(pendingRestore);
+    try {
+      localStorage.setItem('flashcards.restoreNotice',
+        mode === 'merge' ? 'Backup profiles merged successfully.' : 'Backup restored successfully.');
+    } catch {
+      // The restore itself is complete; a full storage quota should only suppress the toast.
+    }
+    location.reload();
+  } catch (error) {
+    restorePreviewStatus.textContent =
+      `Restore failed. Your existing data was kept. ${error.message}`;
+  }
+}
+
+if (backupAllBtn) backupAllBtn.addEventListener('click', downloadFullBackup);
+if (restoreFileInput) restoreFileInput.addEventListener('change', () =>
+  chooseRestoreFile(restoreFileInput.files?.[0]));
+document.getElementById('restore-preview-close')?.addEventListener('click', closeRestorePreview);
+document.getElementById('restore-preview-cancel')?.addEventListener('click', closeRestorePreview);
+document.getElementById('restore-preview-confirm')?.addEventListener('click', confirmRestore);
+if (restorePreviewModal) restorePreviewModal.addEventListener('click', event => {
+  if (event.target === restorePreviewModal) closeRestorePreview();
+});
 
 /* ---------- File import ---------- */
 const fileInput = document.getElementById('file-input');
@@ -3338,6 +3758,11 @@ if (_ver) _ver.textContent = 'Flashcard Flipper ' + APP_VERSION + ' \u00b7 offli
 renderDeckOptions();
 updateCount();
 showView('home');
+const restoreNotice = localStorage.getItem('flashcards.restoreNotice');
+if (restoreNotice) {
+  localStorage.removeItem('flashcards.restoreNotice');
+  setTimeout(() => toast(restoreNotice), 300);
+}
 if (prefBool(PREF.tipsStartup, true)) openStartupTip();
 maybeShowInstallBanner();
 if (_removedHeaders) {
@@ -3370,7 +3795,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v51');
+      waitingWorker.postMessage('activate-v52');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }
