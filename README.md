@@ -75,12 +75,13 @@ Three tabs — **Home**, **Study**, and **Import**:
 - **Export selected deck:** the always-visible Import-tab button saves the selected
   deck to a `.json` file for backup or sharing. Study-tab **Share** remains optimized
   for sending the deck through the device share sheet.
-- **Full backup and restore:** the Import tab can save every profile, deck, card,
+- **Full backup and restore:** **Create Backup** on the Import tab saves every profile, deck, card,
   manual edit, flag, preference, deck order, and saved study position in one versioned
   `.json` backup. Restore offers two explicit modes: **Replace everything** for an
   exact device/domain migration, or **Merge as new profiles** to retain all current
   data without silently overwriting it. Backup files are created and read entirely
-  on-device.
+  on-device and work offline. The file can be stored locally or in a cloud file
+  service, then selected through **Restore Backup** on another device.
 - **Study (Study tab):**
   - Choose **Flashcards**, **Matching Pairs**, or **Multiple Choice**, then use one
     Start button. Mode-specific controls appear only when relevant.

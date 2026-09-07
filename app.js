@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v52';
+const APP_VERSION = 'v53';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -2587,7 +2587,7 @@ const TIPS = [
     text: 'On the Import tab, tap “Import file” to load a Word .docx, a .csv/.txt list, or a .json deck. Review duplicate warnings before saving. Use “Export selected deck” to create a portable backup or sharing file.' },
   { ico: '💾', view: 'edit',
     title: 'Back up or move everything',
-    text: 'On the Import tab, use “Download full backup” to save every profile, deck, preference, flag, and study position. Restore can replace everything exactly or merge the backup as new profiles.' },
+    text: 'On the Import tab, use “Create Backup” to save every profile, deck, preference, flag, and study position. It works offline, and the file can be kept in cloud storage for restoration on another device.' },
   { ico: '✏️', view: 'study',
     title: 'Edit a deck or individual card',
     text: 'While studying Flashcards, tap “Edit card” to correct the card without losing your place. From the deck list, choose Edit to search and manage every card in that deck.' },
@@ -2762,7 +2762,7 @@ const FAQ = [
   ['How do I import questions?',
    'Go to the Import tab and tap \u201cImport file\u201d. You can load a Word .docx, a .csv/.txt list, or a deck .json exported from this app. Review the preview and duplicate warnings, then create a new deck, add the cards to an existing deck, or replace an existing deck. You can also type or paste cards as \u201cquestion | answer\u201d, one per line.'],
   ['How do I back up or move all of my data?',
-   'On the Import tab, choose \u201cDownload full backup\u201d. The file includes every profile, deck, card, manual edit, flag, preference, deck order, and saved study position. To restore it, choose \u201cRestore backup\u201d, then either replace everything for an exact migration or merge the backup as new profiles without overwriting current data.'],
+   'On the Import tab, choose \u201cCreate Backup\u201d. The file includes every profile, deck, card, manual edit, flag, preference, deck order, and saved study position. Creating and restoring backups work offline. You can keep the backup in local storage or a cloud file service such as OneDrive, Box, iCloud Drive, or Google Drive, then choose \u201cRestore Backup\u201d on another device. Restore can replace everything exactly or merge the backup as new profiles without overwriting current data.'],
   ['Why can\u2019t I import some PDFs or Word files?',
    'Scanned or image-only documents contain pictures of text, not real text, so nothing can be extracted without OCR. Convert them to a text-based .docx (open in Word) first, then import.'],
   ['How do decks work?',
@@ -3795,7 +3795,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v52');
+      waitingWorker.postMessage('activate-v53');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }

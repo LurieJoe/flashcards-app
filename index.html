@@ -384,9 +384,12 @@
         <p class="help">
           Save every profile, deck, card, flag, preference, and study position in one file.
         </p>
+        <p class="help">
+          Works offline. Keep the file on this device or in cloud storage so it can be restored elsewhere.
+        </p>
         <div class="backup-actions">
-          <button id="backup-all-btn" type="button" class="btn">Download full backup</button>
-          <label class="btn" for="restore-file-input">Restore backup</label>
+          <button id="backup-all-btn" type="button" class="btn">Create Backup</button>
+          <label class="btn" for="restore-file-input">Restore Backup</label>
           <input id="restore-file-input" type="file" accept=".json,application/json" hidden />
         </div>
         <p id="backup-status" class="status" aria-live="polite"></p>
