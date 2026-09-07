@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v54';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -2614,7 +2614,7 @@ const TIPS = [
     text: 'Choose Matching pairs on the Study tab and select one deck. Questions appear on the left and shuffled answers on the right. At least five applicable cards are needed; tap one from each column to make a pair.' },
   { ico: '✅', view: 'study',
     title: 'Try Multiple Choice',
-    text: 'Choose Multiple choice and select one deck. Flashcard Flipper creates fresh answer choices from that deck each time. Bulleted answers become “Choose every correct answer” questions when enough choices are applicable.' },
+    text: 'Choose Multiple choice and select one deck. Flashcard Flurry creates fresh answer choices from that deck each time. Bulleted answers become “Choose every correct answer” questions when enough choices are applicable.' },
   { ico: '🔍', view: 'study',
     title: 'Study across decks',
     text: 'Check multiple decks to study them together, or use the search box to study every matching card from all your decks at once.' },
@@ -3071,7 +3071,7 @@ function createFullBackup() {
 
 function backupFilename() {
   const date = new Date().toISOString().slice(0, 10);
-  return `Flashcard-Flipper-Backup-${date}.json`;
+  return `Flashcard-Flurry-Backup-${date}.json`;
 }
 
 function downloadFullBackup() {
@@ -3151,7 +3151,7 @@ function validateStoredStudySession(raw, data, profileName) {
 }
 
 function validateFullBackup(value) {
-  assertBackup(value && typeof value === 'object', 'This file is not a Flashcard Flipper backup.');
+  assertBackup(value && typeof value === 'object', 'This file is not a Flashcard Flurry backup.');
   assertBackup(value.format === BACKUP_FORMAT, 'This is a deck export, not a full backup.');
   assertBackup(value.version === BACKUP_VERSION, 'This backup version is not supported.');
   const registry = value.profiles;
@@ -3329,7 +3329,7 @@ function confirmRestore() {
   if (!pendingRestore) return;
   const mode = document.querySelector('input[name="restore-mode"]:checked')?.value || 'replace';
   if (mode === 'replace' &&
-      !confirm('Replace every current Flashcard Flipper profile, deck, and setting with this backup?')) {
+      !confirm('Replace every current Flashcard Flurry profile, deck, and setting with this backup?')) {
     return;
   }
   try {
@@ -3754,7 +3754,7 @@ initTips();
 renderFaq();
 renderPrivacy();
 const _ver = document.querySelector('.settings-version');
-if (_ver) _ver.textContent = 'Flashcard Flipper ' + APP_VERSION + ' \u00b7 offline PWA';
+if (_ver) _ver.textContent = 'Flashcard Flurry ' + APP_VERSION + ' \u00b7 offline PWA';
 renderDeckOptions();
 updateCount();
 showView('home');
@@ -3795,7 +3795,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v53');
+      waitingWorker.postMessage('activate-v54');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }

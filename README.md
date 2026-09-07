@@ -1,4 +1,4 @@
-# Flashcard Flipper — installable phone app (PWA) for iPhone & Android
+# Flashcard Flurry — installable phone app (PWA) for iPhone & Android
 
 A self-contained flashcards app you install onto your iPhone, iPad, or Android
 **home screen** — no Mac, no Xcode, no signing, no expiring certificates, no Play

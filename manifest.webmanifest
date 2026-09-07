@@ -1,7 +1,7 @@
 {
-  "name": "Flashcard Flipper",
-  "short_name": "Flipper",
-  "description": "Flashcard Flipper — make and study flashcards from your own questions and answers, even offline.",
+  "name": "Flashcard Flurry",
+  "short_name": "Flurry",
+  "description": "Flashcard Flurry — make and study flashcards from your own questions and answers, even offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

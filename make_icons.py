@@ -1,9 +1,9 @@
-"""Generate the PWA / home-screen icons for Flashcard Flipper.
+"""Generate the PWA / home-screen icons for Flashcard Flurry.
 
-The app icon is the "Flipping Cards" logo (a flashcard with amber flip
-swirls). The artwork is defined as SVG in icons/src/*.html so it stays crisp
-and editable; this script renders those to PNG with a headless Chromium
-(Edge or Chrome) and then downsizes with Pillow.
+The app icon uses the Learning Trail turtle and its wake of fluttering cards.
+The artwork is defined as SVG in icons/src/*.html so it stays crisp and
+editable; this script renders those to PNG with a headless Chromium (Edge or
+Chrome) and then downsizes with Pillow.
 
     python make_icons.py
 

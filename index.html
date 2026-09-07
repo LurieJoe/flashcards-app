@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-  <title>Flashcard Flipper</title>
-  <meta name="description" content="Flashcard Flipper — make and study flashcards from your own questions and answers, even offline." />
+  <title>Flashcard Flurry</title>
+  <meta name="description" content="Flashcard Flurry — make and study flashcards from your own questions and answers, even offline." />
 
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#4f46e5" />
 
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Flipper" />
+  <meta name="apple-mobile-web-app-title" content="Flurry" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" href="icons/icon-192.png" />
 
@@ -42,59 +42,52 @@
 <body>
   <svg width="0" height="0" class="svg-sprite" aria-hidden="true" focusable="false">
     <defs>
-      <linearGradient id="flipperGrad" x1="0" y1="0" x2="0" y2="1">
+      <linearGradient id="flurryShellGrad" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" style="stop-color:var(--primary-2)" />
         <stop offset="1" style="stop-color:var(--primary)" />
       </linearGradient>
-      <!-- Boxless swimming sea turtle; indigo body + white flashcard flippers (theme-safe). -->
+      <!-- Learning Trail: a swimming turtle followed by a flurry of study cards. -->
       <symbol id="flipperMascot" viewBox="0 0 512 512">
-        <!-- motion streaks -->
-        <g fill="none" stroke-linecap="round" stroke="#818cf8">
-          <path d="M40 300 q60 -14 118 -6" stroke-width="13" opacity=".55" />
-          <path d="M30 236 q64 -16 124 -8" stroke-width="11" opacity=".40" />
-          <path d="M60 360 q54 -10 104 -2" stroke-width="10" opacity=".30" />
+        <path d="M53 365c76 48 151 38 211-4" fill="none" stroke="#818cf8"
+              stroke-width="13" stroke-linecap="round" opacity=".55" />
+        <g>
+          <g transform="translate(42 292) rotate(-26)">
+            <rect width="66" height="86" rx="12" fill="#fff" stroke="#c7d2fe" stroke-width="2" />
+            <path d="M14 23h38M14 38h28" stroke="#a5b4fc" stroke-width="7" stroke-linecap="round" />
+          </g>
+          <g transform="translate(102 357) rotate(-9)">
+            <rect width="57" height="75" rx="11" fill="#fff" stroke="#c7d2fe" stroke-width="2" />
+            <path d="M12 21h33M12 34h23" stroke="#99f6e4" stroke-width="6" stroke-linecap="round" />
+          </g>
+          <g transform="translate(181 374) rotate(13)">
+            <rect width="48" height="64" rx="10" fill="#fff" stroke="#c7d2fe" stroke-width="2" />
+            <path d="M10 18h28M10 30h20" stroke="#a5b4fc" stroke-width="6" stroke-linecap="round" />
+          </g>
         </g>
-        <!-- bubbles -->
-        <g fill="#818cf8">
-          <circle cx="78" cy="150" r="11" opacity=".5" />
-          <circle cx="112" cy="112" r="7" opacity=".4" />
-          <circle cx="60" cy="98" r="6" opacity=".3" />
-        </g>
-        <!-- turtle enlarged to fill (no box) -->
-        <g transform="translate(256 262) scale(1.28) translate(-256 -262)">
-          <g transform="rotate(-13 256 256) translate(6 4)">
-            <!-- back flipper (flashcard) -->
-            <g transform="translate(126,330) rotate(-52)">
-              <rect x="-26" y="-54" width="52" height="108" rx="14" fill="#ffffff" stroke="#c9cdf2" stroke-width="2" />
-              <rect x="-15" y="-36" width="32" height="7" rx="3.5" fill="#aeb4ea" />
-              <rect x="-15" y="-21" width="22" height="7" rx="3.5" fill="#aeb4ea" />
-            </g>
-            <!-- tail -->
-            <path d="M104 262 l-32 -6 6 32 z" fill="#4f46e5" />
-            <!-- upper front flipper (flashcard) -->
-            <g transform="translate(322,200) rotate(48)">
-              <rect x="-30" y="-64" width="60" height="128" rx="16" fill="#ffffff" stroke="#c9cdf2" stroke-width="2" />
-              <rect x="-18" y="-44" width="36" height="7" rx="3.5" fill="#aeb4ea" />
-              <rect x="-18" y="-28" width="26" height="7" rx="3.5" fill="#aeb4ea" />
-            </g>
-            <!-- shell -->
-            <ellipse cx="214" cy="256" rx="132" ry="102" transform="rotate(-11 214 256)" fill="url(#flipperGrad)" />
-            <ellipse cx="206" cy="244" rx="112" ry="82" transform="rotate(-11 214 256)" fill="#ffffff" opacity=".16" />
-            <path d="M150 168 q-2 90 8 168 M214 158 q0 96 2 176 M280 172 q6 84 -2 158" stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".5" />
-            <path d="M104 236 q112 -34 226 4" stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".5" />
-            <!-- neck -->
-            <path d="M312 250 q40 -8 66 -34 q22 20 6 44 q-30 24 -74 22 z" fill="#4f46e5" />
-            <!-- big lower front flipper (flashcard) -->
-            <g transform="translate(296,360) rotate(60)">
-              <rect x="-34" y="-76" width="68" height="152" rx="18" fill="#ffffff" stroke="#c9cdf2" stroke-width="2" />
-              <rect x="-20" y="-54" width="44" height="8" rx="4" fill="#aeb4ea" />
-              <rect x="-20" y="-34" width="30" height="8" rx="4" fill="#aeb4ea" />
-              <rect x="-20" y="-14" width="38" height="8" rx="4" fill="#aeb4ea" />
-            </g>
-            <!-- head -->
-            <ellipse cx="392" cy="196" rx="43" ry="38" transform="rotate(-18 392 196)" fill="url(#flipperGrad)" stroke="#ffffff" stroke-width="3" />
-            <circle cx="405" cy="188" r="8" fill="#ffffff" /><circle cx="405" cy="188" r="4" fill="#312e81" />
-            <path d="M404 214 q16 6 26 -4" stroke="#ffffff" stroke-width="6" fill="none" stroke-linecap="round" opacity=".9" />
+        <g transform="translate(22 -5) rotate(-11 280 235)">
+          <path d="M179 274c-29 5-49 22-53 45 26 10 51 2 67-20 4-13-1-21-14-25z"
+                fill="var(--primary-2)" />
+          <ellipse cx="275" cy="248" rx="128" ry="96" fill="url(#flurryShellGrad)" />
+          <ellipse cx="261" cy="231" rx="104" ry="72" fill="#fff" opacity=".14" />
+          <path d="M213 167q-4 78 5 155M275 155q0 87 2 174M336 176q4 69-2 132M159 239q108-32 220 5"
+                stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".48" />
+          <path d="M371 240q39-8 64-30 22 20 7 43-29 22-72 21z" fill="var(--primary)" />
+          <ellipse cx="446" cy="191" rx="44" ry="38" fill="url(#flurryShellGrad)" stroke="#fff" stroke-width="4" />
+          <circle cx="459" cy="183" r="8" fill="#fff" />
+          <circle cx="460" cy="183" r="4" fill="#243b75" />
+          <path d="M455 208q16 6 26-4" stroke="#fff" stroke-width="6"
+                fill="none" stroke-linecap="round" />
+          <g transform="translate(369 337) rotate(61)">
+            <rect x="-32" y="-71" width="64" height="142" rx="18"
+                  fill="#fff" stroke="#c7d2fe" stroke-width="3" />
+            <path d="M-18-47h38M-18-28h27M-18-9h33"
+                  stroke="#a5b4fc" stroke-width="7" stroke-linecap="round" />
+          </g>
+          <g transform="translate(379 164) rotate(44)">
+            <rect x="-28" y="-60" width="56" height="120" rx="16"
+                  fill="#fff" stroke="#c7d2fe" stroke-width="3" />
+            <path d="M-15-39h31M-15-22h23"
+                  stroke="#a5b4fc" stroke-width="7" stroke-linecap="round" />
           </g>
         </g>
       </symbol>
@@ -104,7 +97,7 @@
     <button id="settings-btn" class="gear-btn" aria-label="Settings" title="Settings">⚙</button>
     <button id="tips-btn" class="bulb-btn" aria-label="Tips" title="Tips">💡</button>
     <button id="profile-btn" class="avatar-btn" aria-label="Profiles" title="Profiles">?</button>
-    <h1>Flashcard Flipper</h1>
+    <h1>Flashcard Flurry</h1>
     <nav class="tabs">
       <button class="tab active" data-view="home">Home</button>
       <button class="tab" data-view="study">Study</button>
@@ -121,7 +114,7 @@
             <use href="#flipperMascot" />
           </svg>
         </div>
-        <h2>Welcome to Flashcard Flipper</h2>
+        <h2>Welcome to Flashcard Flurry</h2>
         <p>Create your own study material, or import a list of questions and
            answers. Organize cards into decks and study them anytime — even offline.</p>
         <div class="home-actions">
@@ -504,7 +497,7 @@
         <div id="privacy" class="privacy"></div>
       </details>
 
-      <p class="settings-version">Flashcard Flipper · offline PWA</p>
+      <p class="settings-version">Flashcard Flurry · offline PWA</p>
     </section>
   </main>
 
