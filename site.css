@@ -238,6 +238,13 @@ html[data-theme="dark"] .eyebrow {
   color: var(--cp-text-soft);
 }
 
+html[data-theme="dark"] .lead,
+html[data-theme="dark"] .muted,
+html[data-theme="dark"] .footer-shell,
+html[data-theme="dark"] .footer-links a {
+  color: var(--cp-text-soft);
+}
+
 html[data-theme="dark"] .button:hover {
   color: var(--cp-text);
 }
