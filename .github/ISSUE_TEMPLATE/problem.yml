@@ -1,0 +1,52 @@
+name: Report a problem
+description: Tell us about something that is not working as expected.
+title: "[Problem] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please do not attach private flashcards, decks, or backup files.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+      placeholder: Tell us what went wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce the problem
+      description: List the steps that consistently cause the problem, if known.
+      placeholder: |
+        1. Open...
+        2. Select...
+        3. See...
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and operating system
+      placeholder: For example, iPhone 16 with iOS 20
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser or installed app
+      placeholder: For example, Safari or the installed Home Screen app
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Flashcard Flurry version
+      description: Find the version at the bottom of Settings.
+      placeholder: For example, v55
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other details or screenshots with private study content removed or obscured.
