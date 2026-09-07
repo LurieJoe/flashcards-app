@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+  </style>
+  <title>Privacy Policy — Flashcard Flurry</title>
+  <meta name="description" content="How Flashcard Flurry stores and handles your cards, profiles, imports, backups, and support information." />
+  <link rel="canonical" href="https://flashcardflurry.com/privacy/" />
+  <link rel="icon" href="/app/icons/icon-192.png" />
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header"><div class="nav-shell"><a class="brand" href="/"><img src="/app/icons/icon-192.png" alt="" /><span>Flashcard Flurry</span></a><nav class="site-nav" aria-label="Main navigation"><a href="/">Home</a><a class="nav-app" href="/app/">App</a><a href="/faq/">FAQ</a><a href="/privacy/" aria-current="page">Privacy Policy</a><a href="/terms/">Terms of Use</a><a href="/support/">Support</a></nav></div></header>
+  <main id="main" class="page-shell">
+    <p class="eyebrow">Last updated September 7, 2026</p>
+    <h1 class="page-title">Privacy Policy</h1>
+    <p class="lead">Flashcard Flurry is designed so that the study material you enter stays under your control.</p>
+    <article class="section content-card">
+      <div class="callout"><p><strong>The short version:</strong> Flashcard Flurry has no accounts, advertising, behavioral analytics, or application database. Your decks and study activity stay in local browser storage unless you choose to export, back up, or share them.</p></div>
+      <h2>Information stored by the app</h2>
+      <p>Flashcard Flurry stores profiles, decks, cards, formatting, review flags, preferences, deck order, and saved study positions in your browser’s local storage. This information remains associated with the browser and website address on the device where you use the app.</p>
+      <h2>Information the app does not collect</h2>
+      <ul>
+        <li>No account, username, password, or sign-in information.</li>
+        <li>No advertising identifier or behavioral tracking.</li>
+        <li>No application analytics about your decks or study activity.</li>
+        <li>No cloud copy of your cards maintained by the application developer.</li>
+      </ul>
+      <h2>Imports and document processing</h2>
+      <p>Supported Word, CSV, text, and JSON files are processed in your browser. Their contents are not uploaded to an application server.</p>
+      <h2>Exports, sharing, and backups</h2>
+      <p>Deck exports and full backups are created locally. A file leaves the app only when you choose a destination through your browser or operating system. Flashcard Flurry cannot see where you save or send that file.</p>
+      <h2>Website hosting</h2>
+      <p>The public website and application files are delivered through GitHub Pages. GitHub and the network services used to reach the site may process standard request information such as an IP address, requested URL, browser details, and timestamps under their own policies. Flashcard Flurry does not add application analytics or tracking scripts.</p>
+      <h2>External links and support</h2>
+      <p>Support and feedback links may open GitHub or another external service. Information you submit there is governed by that service and is shared only when you choose to submit it.</p>
+      <h2>Deleting your information</h2>
+      <p>You can delete individual cards, decks, or profiles from the app. Removing site data from the browser deletes locally stored Flashcard Flurry data on that browser. Before clearing browser storage or uninstalling, create a full backup if you may need the data later.</p>
+      <h2>Changes to this policy</h2>
+      <p>This policy may be updated when the application’s behavior or supporting services change. The revision date at the top identifies the current version.</p>
+      <h2>Questions</h2>
+      <p>Use the <a href="/support/">Support page</a> for privacy questions or concerns.</p>
+    </article>
+  </main>
+  <footer class="site-footer"><div class="footer-shell"><span>© 2026 Flashcard Flurry</span><nav class="footer-links" aria-label="Footer navigation"><a href="/app/">App</a><a href="/faq/">FAQ</a><a href="/terms/">Terms</a><a href="/support/">Support</a></nav></div></footer>
+</body>
+</html>

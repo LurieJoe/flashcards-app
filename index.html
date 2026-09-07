@@ -2,696 +2,212 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-  <title>Flashcard Flurry</title>
-  <meta name="description" content="Flashcard Flurry — make and study flashcards from your own questions and answers, even offline." />
-
-  <link rel="manifest" href="manifest.webmanifest" />
-  <meta name="theme-color" content="#4f46e5" />
-
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Flurry" />
-  <link rel="apple-touch-icon" href="icons/icon-180.png" />
-  <link rel="icon" href="icons/icon-192.png" />
-
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script>
-    // Apply saved theme/accent before first paint to avoid a flash (per active profile).
-    (function () {
-      try {
-        var t = 'system', a = 'indigo', pid = null;
-        var pj = localStorage.getItem('flashcards.profiles.v1');
-        if (pj) { try { pid = (JSON.parse(pj) || {}).activeId; } catch (e) {} }
-        if (pid) {
-          t = localStorage.getItem('flashcards.p.' + pid + '.theme') || 'system';
-          a = localStorage.getItem('flashcards.p.' + pid + '.accent') || 'indigo';
-        } else {
-          t = localStorage.getItem('flashcards.theme') || 'system';
-          a = localStorage.getItem('flashcards.accent') || 'indigo';
-        }
-        document.documentElement.setAttribute('data-theme', t);
-        document.documentElement.setAttribute('data-accent', a);
-      } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'system');
-        document.documentElement.setAttribute('data-accent', 'indigo');
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <script>
+    (() => {
+      const standalone =
+        window.navigator.standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches;
+      if (standalone) {
+        window.location.replace("/app/");
+        return;
+      }
+      if ("serviceWorker" in navigator) {
+        let reloading = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (reloading) return;
+          reloading = true;
+          window.location.reload();
+        });
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.getRegistration("/").then(registration => {
+            if (!registration) return;
+            const activate = worker => {
+              if (worker?.state === "installed") worker.postMessage("activate-v55");
+            };
+            if (registration.waiting) registration.waiting.postMessage("activate-v55");
+            registration.addEventListener("updatefound", () => {
+              registration.installing?.addEventListener("statechange", event => {
+                activate(event.target);
+              });
+            });
+            registration.update().catch(() => {});
+          }).catch(() => {});
+        });
       }
     })();
   </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+  </style>
+  <title>Flashcard Flurry — Create, study, and play offline</title>
+  <meta name="description" content="Create your own flashcards, study across decks, and play Matching Pairs or Multiple Choice. Flashcard Flurry works offline and keeps your data on your device." />
+  <meta name="theme-color" content="#b11f4b" />
+  <link rel="canonical" href="https://flashcardflurry.com/" />
+  <link rel="manifest" href="/app/manifest.webmanifest" />
+  <link rel="icon" href="/app/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/app/icons/icon-180.png" />
+  <link rel="stylesheet" href="/site.css" />
 </head>
 <body>
-  <svg width="0" height="0" class="svg-sprite" aria-hidden="true" focusable="false">
-    <defs>
-      <linearGradient id="flurryShellGrad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" style="stop-color:var(--primary-2)" />
-        <stop offset="1" style="stop-color:var(--primary)" />
-      </linearGradient>
-      <!-- Learning Trail: a swimming turtle followed by a flurry of study cards. -->
-      <symbol id="flipperMascot" viewBox="0 0 512 512">
-        <path d="M53 365c76 48 151 38 211-4" fill="none" stroke="#818cf8"
-              stroke-width="13" stroke-linecap="round" opacity=".55" />
-        <g>
-          <g transform="translate(42 292) rotate(-26)">
-            <rect width="66" height="86" rx="12" fill="#fff" stroke="#c7d2fe" stroke-width="2" />
-            <path d="M14 23h38M14 38h28" stroke="#a5b4fc" stroke-width="7" stroke-linecap="round" />
-          </g>
-          <g transform="translate(102 357) rotate(-9)">
-            <rect width="57" height="75" rx="11" fill="#fff" stroke="#c7d2fe" stroke-width="2" />
-            <path d="M12 21h33M12 34h23" stroke="#99f6e4" stroke-width="6" stroke-linecap="round" />
-          </g>
-          <g transform="translate(181 374) rotate(13)">
-            <rect width="48" height="64" rx="10" fill="#fff" stroke="#c7d2fe" stroke-width="2" />
-            <path d="M10 18h28M10 30h20" stroke="#a5b4fc" stroke-width="6" stroke-linecap="round" />
-          </g>
-        </g>
-        <g transform="translate(22 -5) rotate(-11 280 235)">
-          <path d="M179 274c-29 5-49 22-53 45 26 10 51 2 67-20 4-13-1-21-14-25z"
-                fill="var(--primary-2)" />
-          <ellipse cx="275" cy="248" rx="128" ry="96" fill="url(#flurryShellGrad)" />
-          <ellipse cx="261" cy="231" rx="104" ry="72" fill="#fff" opacity=".14" />
-          <path d="M213 167q-4 78 5 155M275 155q0 87 2 174M336 176q4 69-2 132M159 239q108-32 220 5"
-                stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".48" />
-          <path d="M371 240q39-8 64-30 22 20 7 43-29 22-72 21z" fill="var(--primary)" />
-          <ellipse cx="446" cy="191" rx="44" ry="38" fill="url(#flurryShellGrad)" stroke="#fff" stroke-width="4" />
-          <circle cx="459" cy="183" r="8" fill="#fff" />
-          <circle cx="460" cy="183" r="4" fill="#243b75" />
-          <path d="M455 208q16 6 26-4" stroke="#fff" stroke-width="6"
-                fill="none" stroke-linecap="round" />
-          <g transform="translate(369 337) rotate(61)">
-            <rect x="-32" y="-71" width="64" height="142" rx="18"
-                  fill="#fff" stroke="#c7d2fe" stroke-width="3" />
-            <path d="M-18-47h38M-18-28h27M-18-9h33"
-                  stroke="#a5b4fc" stroke-width="7" stroke-linecap="round" />
-          </g>
-          <g transform="translate(379 164) rotate(44)">
-            <rect x="-28" y="-60" width="56" height="120" rx="16"
-                  fill="#fff" stroke="#c7d2fe" stroke-width="3" />
-            <path d="M-15-39h31M-15-22h23"
-                  stroke="#a5b4fc" stroke-width="7" stroke-linecap="round" />
-          </g>
-        </g>
-      </symbol>
-    </defs>
-  </svg>
-  <header class="app-header">
-    <button id="settings-btn" class="gear-btn" aria-label="Settings" title="Settings">⚙</button>
-    <button id="tips-btn" class="bulb-btn" aria-label="Tips" title="Tips">💡</button>
-    <button id="profile-btn" class="avatar-btn" aria-label="Profiles" title="Profiles">?</button>
-    <h1>Flashcard Flurry</h1>
-    <nav class="tabs">
-      <button class="tab active" data-view="home">Home</button>
-      <button class="tab" data-view="study">Study</button>
-      <button class="tab" data-view="edit">Import</button>
-    </nav>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/" aria-label="Flashcard Flurry home">
+        <img src="/app/icons/icon-192.png" alt="" />
+        <span>Flashcard Flurry</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="/" aria-current="page">Home</a>
+        <a class="nav-app" href="/app/">App</a>
+        <a href="/faq/">FAQ</a>
+        <a href="/privacy/">Privacy Policy</a>
+        <a href="/terms/">Terms of Use</a>
+        <a href="/support/">Support</a>
+      </nav>
+    </div>
   </header>
 
-  <main>
-    <!-- HOME VIEW -->
-    <section id="home-view" class="view active">
-      <div class="welcome">
-        <div class="welcome-icon" aria-hidden="true">
-          <svg class="welcome-flipper" role="img" aria-label="Flipper the turtle">
-            <use href="#flipperMascot" />
-          </svg>
+  <main id="main" class="page-shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Your cards. Your pace. Your device.</p>
+        <h1>Turn what you need to learn into something you want to study.</h1>
+        <p class="lead">Create or import flashcards, organize them into decks, and study with classic cards, Matching Pairs, or Multiple Choice—even when you are offline.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="/app/">Open Flashcard Flurry</a>
+          <a class="button" href="#features">See what it does</a>
         </div>
-        <h2>Welcome to Flashcard Flurry</h2>
-        <p>Create your own study material, or import a list of questions and
-           answers. Organize cards into decks and study them anytime — even offline.</p>
-        <div class="home-actions">
-          <button class="btn primary" data-goto="study">Study a deck</button>
-          <button class="btn" data-goto="edit">Import or create</button>
-        </div>
-        <div class="home-tips-controls">
-          <button id="home-tips-btn" class="hidden" tabindex="-1" aria-hidden="true">View tips</button>
-          <label class="toggle-row tips-startup-row">
-            <input type="checkbox" class="tips-startup-check" />
-            <span>Show tips at startup</span>
-          </label>
-        </div>
+      </div>
+      <div class="hero-mark" aria-label="Flashcard Flurry Learning Trail turtle">
+        <img src="/app/icons/icon-512.png" alt="A green turtle swimming with a trail of flashcards" />
       </div>
     </section>
 
-    <!-- STUDY VIEW -->
-    <section id="study-view" class="view">
-      <!-- Deck picker -->
-      <div id="deck-picker">
-        <h2 class="head-with-flipper">
-          <svg class="flipper-emblem" aria-hidden="true"><use href="#flipperMascot" /></svg>
-          Choose how to study
-        </h2>
-
-        <div id="resume-study-panel" class="resume-study-panel hidden">
-          <div>
-            <strong>Continue where you left off</strong>
-            <p id="resume-study-summary"></p>
-          </div>
-          <div class="resume-study-actions">
-            <button id="resume-study-btn" type="button" class="btn primary">Resume</button>
-            <button id="discard-study-btn" type="button" class="btn small">Dismiss</button>
-          </div>
-        </div>
-
-        <div id="study-mode-picker" class="study-mode-picker" role="radiogroup" aria-label="Study mode" hidden>
-          <button type="button" class="study-mode-option active" data-study-mode="flashcards"
-                  role="radio" aria-checked="true">
-            <span class="study-mode-icon" aria-hidden="true">↻</span>
-            <span><strong>Flashcards</strong><small>Flip cards at your own pace</small></span>
-          </button>
-          <button type="button" class="study-mode-option" data-study-mode="matching"
-                  role="radio" aria-checked="false">
-            <span class="study-mode-icon" aria-hidden="true">🧩</span>
-            <span><strong>Matching pairs</strong><small>Match five questions and answers</small></span>
-          </button>
-          <button type="button" class="study-mode-option" data-study-mode="multiple-choice"
-                  role="radio" aria-checked="false">
-            <span class="study-mode-icon" aria-hidden="true">✓</span>
-            <span><strong>Multiple choice</strong><small>Choose the correct answer or answers</small></span>
-          </button>
-        </div>
-
-        <form id="search-form" class="search-row" role="search">
-          <input id="search-input" type="search" inputmode="search"
-                 placeholder="Search all decks (e.g. Washington)…" aria-label="Search all decks" />
-          <button type="submit" id="search-btn" class="btn">Search</button>
-        </form>
-        <p id="search-status" class="search-status"></p>
-
-        <div class="deck-list-heading">
-          <p id="deck-selection-help" class="help">Select one or more decks. Multiple decks are studied together.</p>
-          <button id="select-all-btn" class="btn small">Select all</button>
-        </div>
-        <ul id="deck-list" class="deck-list"></ul>
-        <div id="picker-empty" class="empty hidden">
-          <p>You don't have any cards yet.</p>
-          <button class="btn primary" data-goto="edit">Import or create a deck</button>
-        </div>
-        <div id="picker-controls" class="controls-stack">
-          <label id="only-flagged-row" class="toggle-row">
-            <input type="checkbox" id="only-flagged" />
-            <span>Only use flagged cards</span>
-            <span id="flagged-total" class="deck-item-count"></span>
-          </label>
-          <label id="reverse-row" class="toggle-row">
-            <input type="checkbox" id="reverse-mode" />
-            <span>Reverse — show the answer, guess the question</span>
-          </label>
-          <button id="start-mode-btn" class="btn primary start-mode-btn" hidden>Start Flashcards</button>
-          <p id="mode-eligibility" class="mode-eligibility hidden" aria-live="polite">
-          </p>
-          <div id="legacy-study-actions">
-            <p class="picker-note">Reverse applies to Study only, not Tap matching pairs.</p>
-            <div class="controls study-actions">
-              <button id="start-study-btn" class="btn primary">Study</button>
-              <button id="start-match-btn" class="btn match-start-btn" disabled>Tap matching pairs</button>
-            </div>
-            <p id="match-eligibility" class="match-eligibility" aria-live="polite">
-              Select one deck to see how many cards are applicable.
-            </p>
-          </div>
-        </div>
-        <div id="hidden-decks" class="hidden-decks"></div>
+    <section id="features" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Built for focused learning</p>
+        <h2>More ways to practice the material that matters to you</h2>
+        <p class="muted">Flashcard Flurry combines flexible deck creation with three study experiences and device-local privacy.</p>
       </div>
-
-      <!-- Individual deck card manager -->
-      <div id="card-manager" class="hidden">
-        <div class="study-top card-manager-head">
-          <button id="card-manager-back" class="btn small">&#8249; Decks</button>
-          <span id="card-manager-title" class="study-deck-label">Edit deck</span>
-          <button id="card-manager-add" class="btn small">+ Add card</button>
-        </div>
-        <p class="help card-manager-help">Tap a card to edit it.</p>
-        <div class="card-manager-search hidden">
-          <input id="card-manager-search" type="search" inputmode="search"
-                 placeholder="Search questions or answers…" aria-label="Search cards in this deck" />
-          <button id="card-manager-search-clear" type="button" class="btn small hidden">Clear</button>
-        </div>
-        <p id="card-manager-search-status" class="search-status" aria-live="polite"></p>
-        <div id="card-manager-empty" class="empty hidden">
-          <p>This deck does not have any cards yet.</p>
-          <button id="card-manager-empty-add" class="btn primary">Add the first card</button>
-        </div>
-        <div id="card-manager-no-results" class="empty hidden">
-          <p>No cards match this search.</p>
-        </div>
-        <ol id="card-manager-list" class="card-manager-list"></ol>
-      </div>
-
-      <!-- Study area -->
-      <div id="study-area" class="hidden">
-        <div class="study-top">
-          <button id="back-to-decks" class="btn small">&#8249; Decks</button>
-          <span id="study-deck-label" class="study-deck-label"></span>
-          <button id="study-edit-card" class="btn small hidden">Edit card</button>
-          <button id="timer" class="timer hidden" title="Tap to pause/resume">0:00</button>
-        </div>
-        <div class="study-mascot" aria-hidden="true">
-          <svg class="flipper-study"><use href="#flipperMascot" /></svg>
-        </div>
-        <div class="progress">
-          <div class="progress-line">
-            <span id="progress-text">1 / 1</span>
-          </div>
-          <div class="progress-bar"><div id="progress-fill"></div></div>
-        </div>
-
-        <div id="card" class="card" role="button" tabindex="0" aria-label="Flashcard, tap to flip">
-          <div class="card-inner">
-            <div class="card-face card-front">
-              <span class="card-label" id="front-label">Question</span>
-              <p id="card-question"></p>
-            </div>
-            <div class="card-face card-back">
-              <span class="card-label" id="back-label">Answer</span>
-              <p id="card-answer"></p>
-            </div>
-          </div>
-        </div>
-        <p class="hint">Tap the card to flip</p>
-
-        <label class="flag-row">
-          <input type="checkbox" id="flag-check" />
-          <span>Flag this card for review</span>
-        </label>
-
-        <div class="controls">
-          <button id="prev-btn" class="btn">&#8592; Prev</button>
-          <button id="shuffle-btn" class="btn">Shuffle</button>
-          <button id="next-btn" class="btn">Next &#8594;</button>
-        </div>
-      </div>
-
-      <!-- Matching-pairs game -->
-      <div id="match-area" class="hidden">
-        <div class="study-top">
-          <button id="match-back-to-decks" class="btn small">&#8249; Decks</button>
-          <span id="match-deck-label" class="study-deck-label"></span>
-        </div>
-        <div class="study-mascot" aria-hidden="true">
-          <svg class="flipper-study"><use href="#flipperMascot" /></svg>
-        </div>
-        <div class="match-heading">
-          <h2>Tap the matching pairs</h2>
-          <span id="match-progress" class="match-progress"></span>
-        </div>
-        <p id="match-status" class="match-status" aria-live="polite">
-          Match each question with its answer.
-        </p>
-        <div id="match-board" class="match-board" aria-label="Matching pairs"></div>
-      </div>
-
-      <!-- Multiple-choice game -->
-      <div id="choice-area" class="hidden">
-        <div class="study-top">
-          <button id="choice-back-to-decks" class="btn small">&#8249; Decks</button>
-          <span id="choice-deck-label" class="study-deck-label"></span>
-        </div>
-        <div class="study-mascot" aria-hidden="true">
-          <svg class="flipper-study"><use href="#flipperMascot" /></svg>
-        </div>
-        <div class="choice-heading">
-          <h2>Multiple choice</h2>
-          <span id="choice-progress" class="choice-progress"></span>
-        </div>
-        <p id="choice-instruction" class="choice-instruction">Choose one answer.</p>
-        <div id="choice-question" class="choice-question"></div>
-        <div id="choice-options" class="choice-options" aria-label="Answer choices"></div>
-        <p id="choice-status" class="choice-status" aria-live="polite"></p>
-        <button id="choice-check-btn" class="btn primary choice-action" disabled>Check answer</button>
-        <button id="choice-next-btn" class="btn primary choice-action hidden">Next question</button>
+      <div class="card-grid">
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">1</div>
+          <h3>Make it yours</h3>
+          <p>Create cards individually, paste a list, import common file formats, or start with a built-in deck.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">2</div>
+          <h3>Study three ways</h3>
+          <p>Use traditional flashcards, tap matching pairs, or answer locally generated multiple-choice questions.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">3</div>
+          <h3>Keep your place</h3>
+          <p>Resume the exact card and shuffled order later, and edit a card without leaving your study session.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">4</div>
+          <h3>Works offline</h3>
+          <p>Install it on your home screen and continue creating, studying, backing up, and restoring without a connection.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">5</div>
+          <h3>Private by design</h3>
+          <p>No accounts, analytics, advertising, or cloud database. Your cards and study activity stay in your browser.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">6</div>
+          <h3>Portable backups</h3>
+          <p>Create one full backup containing every profile, deck, edit, flag, preference, and saved study position.</p>
+        </article>
       </div>
     </section>
 
-    <!-- IMPORT / CREATE VIEW -->
-    <section id="edit-view" class="view">
-      <h2 class="head-with-flipper">
-        <svg class="flipper-emblem" aria-hidden="true"><use href="#flipperMascot" /></svg>
-        Import &amp; Create
-      </h2>
-      <div class="deck-bar">
-        <select id="deck-select" aria-label="Select deck to edit"></select>
-        <button id="new-deck-btn" class="icon-btn" title="New deck" aria-label="New deck">+</button>
-        <button id="rename-deck-btn" class="icon-btn" title="Rename deck" aria-label="Rename deck">&#9998;</button>
-        <button id="delete-deck-btn" class="icon-btn" title="Delete deck" aria-label="Delete deck">&#128465;</button>
+    <section class="section">
+      <div class="content-card">
+        <p class="eyebrow">Installable web app</p>
+        <h2>Use it like an app without an app store</h2>
+        <p>Open Flashcard Flurry in Safari on iPhone or iPad and choose <strong>Share → Add to Home Screen</strong>. On Android, open it in Chrome and choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</p>
+        <p class="muted">The first visit and software updates require an internet connection. Your installed study app works offline after its files have been cached.</p>
+        <div class="button-row">
+          <a class="button primary" href="/app/">Launch the app</a>
+          <a class="button" href="/faq/">Read the FAQ</a>
+        </div>
       </div>
-
-      <section class="generator">
-        <h3>✨ Auto-create a deck</h3>
-        <form id="gen-form" class="gen-row">
-          <select id="gen-topic" aria-label="Built-in deck">
-            <option value="">Choose a deck</option>
-            <option value="Animals">Animals</option>
-            <option value="US State Capitals">US State Capitals</option>
-            <option value="World Capitals">World Capitals</option>
-            <option value="World Flags">World Flags</option>
-            <option value="US Presidents">US Presidents</option>
-            <option value="Multiplication Tables">Multiplication Tables</option>
-            <option value="Chemical Elements">Chemical Elements</option>
-            <option value="Spanish Vocabulary">Spanish Vocabulary</option>
-            <option value="French Vocabulary">French Vocabulary</option>
-            <option value="Portuguese Vocabulary">Portuguese Vocabulary</option>
-            <option value="Planets &amp; Space">Planets &amp; Space</option>
-            <option value="US Civics Basics">US Civics Basics</option>
-            <option value="Colors">Colors</option>
-            <option value="Shapes">Shapes</option>
-          </select>
-          <select id="gen-count" aria-label="Number of cards">
-            <option value="10">10</option>
-            <option value="25" selected>25</option>
-            <option value="50">50</option>
-            <option value="0">All</option>
-          </select>
-          <button type="submit" id="gen-btn" class="btn primary">Generate</button>
-        </form>
-        <p id="gen-status" class="status"></p>
-      </section>
-
-      <div class="import-row">
-        <label class="btn" for="file-input">Import file</label>
-        <input id="file-input" type="file" accept=".docx,.json,.txt,.csv" hidden />
-        <button id="export-btn" class="btn">Export selected deck</button>
-        <span class="import-hint">.docx, .csv, .txt, or a deck .json</span>
-      </div>
-
-      <section id="backup-restore" class="backup-restore hidden">
-        <h3>Backup &amp; restore</h3>
-        <p class="help">
-          Save every profile, deck, card, flag, preference, and study position in one file.
-        </p>
-        <p class="help">
-          Works offline. Keep the file on this device or in cloud storage so it can be restored elsewhere.
-        </p>
-        <div class="backup-actions">
-          <button id="backup-all-btn" type="button" class="btn">Create Backup</button>
-          <label class="btn" for="restore-file-input">Restore Backup</label>
-          <input id="restore-file-input" type="file" accept=".json,application/json" hidden />
-        </div>
-        <p id="backup-status" class="status" aria-live="polite"></p>
-      </section>
-
-      <p id="edit-status" class="status"></p>
-
-      <button type="button" id="manual-editor-toggle" class="btn manual-editor-toggle hidden"
-              aria-expanded="false" aria-controls="manual-editor">
-        <span>Create or edit cards</span><span class="manual-editor-chevron" aria-hidden="true">&#8964;</span>
-      </button>
-      <section id="manual-editor" class="manual-editor">
-        <p class="help">
-          Type one card per line as <code>question | answer</code>
-          (also accepts <code>question - answer</code>, a tab, or CSV).
-        </p>
-        <p class="help">
-          Formatting (optional): <code>**bold**</code>, <code>*italic*</code>,
-          <code>__underline__</code>, colored text <code>{{c:red|text}}</code>, and shapes
-          <code>{{shape:circle|#4f46e5|120}}</code>. Separate items with a
-          <code>;</code> to make a bulleted list (e.g. <code>Red; Blue; Yellow</code>).
-          Try the Auto-create <strong>Colors</strong> or <strong>Shapes</strong> decks
-          for examples.
-        </p>
-        <textarea id="bulk-input" rows="10" spellcheck="false"
-          placeholder="What is the capital of France? | Paris&#10;2 + 2 | 4&#10;Largest planet | Jupiter"></textarea>
-        <div class="edit-actions">
-          <button id="save-btn" class="btn primary">Save cards</button>
-          <button id="clear-btn" class="btn danger">Clear</button>
-        </div>
-        <p class="count"><span id="card-count">0</span> cards in this deck</p>
-      </section>
-    </section>
-
-    <!-- SETTINGS VIEW -->
-    <section id="settings-view" class="view">
-      <div class="settings-head">
-        <button id="settings-back" class="btn small">&#8249; Back</button>
-        <h2>Settings</h2>
-      </div>
-
-      <section class="settings-group">
-        <h3>Appearance</h3>
-        <div class="setting">
-          <span class="setting-label">Theme</span>
-          <div id="theme-mode" class="segmented" role="group" aria-label="Theme mode">
-            <button type="button" class="seg" data-mode="system">System</button>
-            <button type="button" class="seg" data-mode="light">Light</button>
-            <button type="button" class="seg" data-mode="dark">Dark</button>
-          </div>
-        </div>
-        <div class="setting">
-          <span class="setting-label">Accent color</span>
-          <div id="accent-swatches" class="swatches" role="group" aria-label="Accent color">
-            <button type="button" class="swatch" data-accent="indigo" style="--sw:#4f46e5" title="Indigo" aria-label="Indigo"></button>
-            <button type="button" class="swatch" data-accent="blue" style="--sw:#2563eb" title="Blue" aria-label="Blue"></button>
-            <button type="button" class="swatch" data-accent="teal" style="--sw:#0d9488" title="Teal" aria-label="Teal"></button>
-            <button type="button" class="swatch" data-accent="green" style="--sw:#16a34a" title="Green" aria-label="Green"></button>
-            <button type="button" class="swatch" data-accent="purple" style="--sw:#7c3aed" title="Purple" aria-label="Purple"></button>
-            <button type="button" class="swatch" data-accent="rose" style="--sw:#e11d48" title="Rose" aria-label="Rose"></button>
-            <button type="button" class="swatch" data-accent="orange" style="--sw:#ea580c" title="Orange" aria-label="Orange"></button>
-            <button type="button" class="swatch" data-accent="cranberry" style="--sw:#a4133c" title="Cranberry" aria-label="Cranberry"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="settings-group">
-        <h3>Preferences</h3>
-        <label class="toggle-row">
-          <input type="checkbox" id="pref-sound" />
-          <span>Sound effects (different cues for flips, correct pairs, and incorrect matches)</span>
-        </label>
-        <label class="toggle-row">
-          <input type="checkbox" id="pref-timer" />
-          <span>Show a timer while studying</span>
-        </label>
-        <label class="toggle-row">
-          <input type="checkbox" class="tips-startup-check" />
-          <span>Show tips at startup</span>
-        </label>
-        <label class="toggle-row">
-          <input type="checkbox" id="pref-tips-navigate" />
-          <span>Show tips as you navigate</span>
-        </label>
-        <div class="setting">
-          <span class="setting-label">Font size</span>
-          <div id="font-size" class="segmented" role="group" aria-label="Font size">
-            <button type="button" class="seg" data-font="small">Small</button>
-            <button type="button" class="seg" data-font="default">Default</button>
-            <button type="button" class="seg" data-font="large">Large</button>
-            <button type="button" class="seg" data-font="xl">XL</button>
-          </div>
-          <p class="font-preview" aria-hidden="true">Preview: cards and text scale to this size.</p>
-        </div>
-      </section>
-
-      <details class="settings-group collapsible">
-        <summary class="group-summary">Help Center</summary>
-        <div id="faq"></div>
-      </details>
-
-      <section class="settings-group">
-        <h3>Feedback</h3>
-        <p class="settings-note">Found a bug or have an idea? I'd love to hear it.
-          Feedback opens a prefilled report on GitHub.</p>
-        <a id="feedback-link" class="btn primary" target="_blank" rel="noopener"
-           href="https://github.com/LurieJoe/flashcards-app/issues/new">Send feedback</a>
-      </section>
-
-      <details class="settings-group collapsible">
-        <summary class="group-summary">Privacy Policy</summary>
-        <div id="privacy" class="privacy"></div>
-      </details>
-
-      <p class="settings-version">Flashcard Flurry · offline PWA</p>
     </section>
   </main>
 
-  <div id="install-banner" class="install-banner hidden">
-    <span>Add this app to your home screen: tap <strong>Share</strong> then <strong>Add to Home Screen</strong>.</span>
-    <button id="install-dismiss" aria-label="Dismiss">&times;</button>
-  </div>
-
-  <div id="profiles-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Profiles">
-    <div class="modal-card">
-      <div class="modal-head">
-        <svg class="modal-flipper" aria-hidden="true"><use href="#flipperMascot" /></svg>
-        <h2>Profiles</h2>
-        <button id="profiles-close" class="modal-x" aria-label="Close">&times;</button>
-      </div>
-      <ul id="profile-list" class="profile-list"></ul>
-      <button id="add-profile-btn" class="btn">+ Add profile</button>
-      <p class="modal-note">Each profile keeps its own decks, theme, font size, and
-        settings — all on this device. No accounts, no passwords, nothing leaves your phone.</p>
+  <footer class="site-footer">
+    <div class="footer-shell">
+      <span>© 2026 Flashcard Flurry</span>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="/app/">App</a>
+        <a href="/faq/">FAQ</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/terms/">Terms</a>
+        <a href="/support/">Support</a>
+      </nav>
     </div>
-  </div>
-
-  <div id="tips-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Tips">
-    <div class="modal-card">
-      <div class="modal-head">
-        <span class="modal-bulb" aria-hidden="true">💡</span>
-        <h2>Tips</h2>
-        <button id="tips-close" class="modal-x" aria-label="Close">&times;</button>
-      </div>
-      <ul id="tips-list" class="tips-list"></ul>
-      <label class="toggle-row tips-startup-row">
-        <input type="checkbox" class="tips-startup-check" />
-        <span>Show these tips at startup</span>
-      </label>
-    </div>
-  </div>
-
-  <div id="startup-tip-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Quick tip">
-    <div class="modal-card">
-      <div class="modal-head">
-        <span class="modal-bulb" aria-hidden="true">💡</span>
-        <h2>Quick tip</h2>
-        <button id="startup-tip-close" class="modal-x" aria-label="Close">&times;</button>
-      </div>
-      <ul id="startup-tip-body" class="tips-list"></ul>
-      <button id="see-all-tips-btn" class="btn see-all-btn">See all tips</button>
-      <label class="toggle-row tips-startup-row">
-        <input type="checkbox" class="tips-startup-check" />
-        <span>Show a tip at startup</span>
-      </label>
-    </div>
-  </div>
-
-  <div id="card-editor-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
-       aria-labelledby="card-editor-title">
-    <div class="modal-card">
-      <div class="modal-head">
-        <svg class="modal-flipper" aria-hidden="true"><use href="#flipperMascot" /></svg>
-        <h2 id="card-editor-title">Edit card</h2>
-        <button id="card-editor-close" class="modal-x" aria-label="Close">&times;</button>
-      </div>
-      <label class="field-label" for="card-editor-question">Question</label>
-      <div class="format-toolbar" role="toolbar" aria-label="Format question text">
-        <button type="button" class="format-btn" data-target="card-editor-question" data-format="bold"
-                title="Bold" aria-label="Bold"><strong>B</strong></button>
-        <button type="button" class="format-btn" data-target="card-editor-question" data-format="italic"
-                title="Italic" aria-label="Italic"><em>I</em></button>
-        <button type="button" class="format-btn format-underline" data-target="card-editor-question"
-                data-format="underline" title="Underline" aria-label="Underline">U</button>
-        <button type="button" class="format-btn format-list" data-target="card-editor-question"
-                data-format="list" title="Bulleted list" aria-label="Edit bulleted list">&#8226; List</button>
-      </div>
-      <textarea id="card-editor-question" rows="4" spellcheck="true"></textarea>
-      <label class="field-label" for="card-editor-answer">Answer</label>
-      <div class="format-toolbar" role="toolbar" aria-label="Format answer text">
-        <button type="button" class="format-btn" data-target="card-editor-answer" data-format="bold"
-                title="Bold" aria-label="Bold"><strong>B</strong></button>
-        <button type="button" class="format-btn" data-target="card-editor-answer" data-format="italic"
-                title="Italic" aria-label="Italic"><em>I</em></button>
-        <button type="button" class="format-btn format-underline" data-target="card-editor-answer"
-                data-format="underline" title="Underline" aria-label="Underline">U</button>
-        <button type="button" class="format-btn format-list" data-target="card-editor-answer"
-                data-format="list" title="Bulleted list" aria-label="Edit bulleted list">&#8226; List</button>
-      </div>
-      <textarea id="card-editor-answer" rows="4" spellcheck="true"></textarea>
-      <p id="card-editor-status" class="modal-note" aria-live="polite"></p>
-      <div class="card-editor-actions">
-        <button id="card-editor-save" class="btn primary">Save card</button>
-        <button id="card-editor-duplicate" class="btn">Duplicate</button>
-        <button id="card-editor-delete" class="btn danger">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="bullet-editor-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
-       aria-labelledby="bullet-editor-title">
-    <div class="modal-card bullet-editor-card">
-      <div class="modal-head">
-        <svg class="modal-flipper" aria-hidden="true"><use href="#flipperMascot" /></svg>
-        <h2 id="bullet-editor-title">Edit bulleted list</h2>
-        <button id="bullet-editor-close" class="modal-x" aria-label="Close">&times;</button>
-      </div>
-      <p class="modal-note">Add an item, then use the arrow buttons to change its position.</p>
-      <div id="bullet-editor-list" class="bullet-editor-list"></div>
-      <button id="bullet-editor-add" type="button" class="btn">+ Add item</button>
-      <p id="bullet-editor-status" class="modal-note" aria-live="polite"></p>
-      <div class="bullet-editor-actions">
-        <button id="bullet-editor-cancel" type="button" class="btn">Cancel</button>
-        <button id="bullet-editor-apply" type="button" class="btn primary">Apply list</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="import-preview-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
-       aria-labelledby="import-preview-title">
-    <div class="modal-card import-preview-card">
-      <div class="modal-head">
-        <svg class="modal-flipper" aria-hidden="true"><use href="#flipperMascot" /></svg>
-        <h2 id="import-preview-title">Review import</h2>
-        <button id="import-preview-close" class="modal-x" aria-label="Close">&times;</button>
-      </div>
-      <p id="import-preview-summary" class="import-preview-summary"></p>
-      <div id="import-preview-warnings" class="import-preview-warnings" aria-live="polite"></div>
-      <ol id="import-preview-list" class="import-preview-list"></ol>
-      <p id="import-preview-more" class="modal-note"></p>
-
-      <label class="field-label" for="import-destination">Import action</label>
-      <select id="import-destination">
-        <option value="new">Create a new deck</option>
-        <option value="add">Add to an existing deck</option>
-        <option value="replace">Replace an existing deck</option>
-      </select>
-
-      <div id="import-new-name-row">
-        <label class="field-label" for="import-new-name">New deck name</label>
-        <input id="import-new-name" type="text" autocomplete="off" />
-      </div>
-
-      <div id="import-existing-row" class="hidden">
-        <label class="field-label" for="import-existing-deck">Existing deck</label>
-        <select id="import-existing-deck"></select>
-      </div>
-
-      <label class="toggle-row import-skip-row">
-        <input id="import-skip-duplicates" type="checkbox" checked />
-        <span>Skip exact duplicate cards</span>
-      </label>
-      <p id="import-result-summary" class="modal-note" aria-live="polite"></p>
-
-      <div class="import-preview-actions">
-        <button id="import-preview-cancel" class="btn">Cancel</button>
-        <button id="import-preview-confirm" class="btn primary">Import cards</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="restore-preview-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
-       aria-labelledby="restore-preview-title">
-    <div class="modal-card restore-preview-card">
-      <div class="modal-head">
-        <svg class="modal-flipper" aria-hidden="true"><use href="#flipperMascot" /></svg>
-        <h2 id="restore-preview-title">Restore backup</h2>
-        <button id="restore-preview-close" class="modal-x" aria-label="Close">&times;</button>
-      </div>
-      <p id="restore-preview-summary" class="restore-preview-summary"></p>
-      <p id="restore-preview-date" class="modal-note"></p>
-
-      <fieldset class="restore-options">
-        <legend>How should this backup be restored?</legend>
-        <label class="restore-option">
-          <input type="radio" name="restore-mode" value="replace" checked />
-          <span>
-            <strong>Replace everything</strong>
-            <small>Recreate the backup exactly. Best for moving to a new device or domain.</small>
-          </span>
-        </label>
-        <label class="restore-option">
-          <input type="radio" name="restore-mode" value="merge" />
-          <span>
-            <strong>Merge as new profiles</strong>
-            <small>Keep current data and add each backed-up profile as a separate restored profile.</small>
-          </span>
-        </label>
-      </fieldset>
-
-      <p id="restore-preview-status" class="modal-note" aria-live="polite"></p>
-      <div class="import-preview-actions">
-        <button id="restore-preview-cancel" type="button" class="btn">Cancel</button>
-        <button id="restore-preview-confirm" type="button" class="btn primary">Restore backup</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="generators.js"></script>
-  <script src="app.js"></script>
+  </footer>
 </body>
 </html>

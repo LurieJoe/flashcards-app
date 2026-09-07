@@ -2,6 +2,7 @@
   "name": "Flashcard Flurry",
   "short_name": "Flurry",
   "description": "Flashcard Flurry — make and study flashcards from your own questions and answers, even offline.",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,8 +10,8 @@
   "background_color": "#0f172a",
   "theme_color": "#4f46e5",
   "icons": [
-    { "src": "app/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "app/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "app/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

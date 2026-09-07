@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+  </style>
+  <title>FAQ — Flashcard Flurry</title>
+  <meta name="description" content="Answers to common questions about installing, using, backing up, and studying with Flashcard Flurry." />
+  <link rel="canonical" href="https://flashcardflurry.com/faq/" />
+  <link rel="icon" href="/app/icons/icon-192.png" />
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><img src="/app/icons/icon-192.png" alt="" /><span>Flashcard Flurry</span></a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="/">Home</a><a class="nav-app" href="/app/">App</a><a href="/faq/" aria-current="page">FAQ</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Use</a><a href="/support/">Support</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main" class="page-shell">
+    <p class="eyebrow">Help center</p>
+    <h1 class="page-title">Frequently asked questions</h1>
+    <p class="lead">Quick answers about local storage, installing the app, creating decks, study modes, backups, and updates.</p>
+    <section class="section faq-list">
+      <details><summary>Where is my data stored?</summary><p>Your profiles, decks, cards, flags, saved study positions, and preferences are stored in your browser’s local storage on this device. Flashcard Flurry does not upload them to an application account or cloud database.</p></details>
+      <details><summary>Does Flashcard Flurry work offline?</summary><p>Yes. Open the app online once so its files can be cached, then install it on your home screen. Creating and studying cards, editing decks, and creating or restoring a locally available backup work offline.</p></details>
+      <details><summary>How do I install it on an iPhone or iPad?</summary><p>Open <a href="/app/">Flashcard Flurry</a> in Safari, tap Share, choose Add to Home Screen, and tap Add. Launch it from the new icon after installation.</p></details>
+      <details><summary>How do I install it on Android?</summary><p>Open the app in Chrome, open the browser menu, and choose Install app or Add to Home screen.</p></details>
+      <details><summary>How do profiles work?</summary><p>Tap the colored avatar in the app to add or switch profiles. Each profile has its own decks, theme, accent, font size, and preferences. Profiles are local and do not require accounts or passwords.</p></details>
+      <details><summary>How do I import questions?</summary><p>Open the Import tab and select Import file. You can import a supported Word document, CSV or text list, or a deck JSON file. You can also paste cards using one question-and-answer pair per line.</p></details>
+      <details><summary>How do I back up or move all of my data?</summary><p>On the Import tab, select Create Backup. The JSON file includes every profile, deck, manual edit, flag, preference, deck order, and saved study position. Save it locally or in a cloud file service, then use Restore Backup on another device.</p></details>
+      <details><summary>Can I continue a study session later?</summary><p>Yes. Flashcards mode saves the exact card and study order. Return to the Study tab and use the Resume panel to continue.</p></details>
+      <details><summary>Can I edit a card while studying?</summary><p>Yes. In Flashcards mode, select Edit card, make the correction, and save. The current position and study order remain intact.</p></details>
+      <details><summary>What is Matching Pairs?</summary><p>Matching Pairs presents five questions on the left and five shuffled answers on the right. Match every pair to advance to the next group. Repeated questions or answers are kept out of the same round.</p></details>
+      <details><summary>How does Multiple Choice work?</summary><p>The app creates answer choices locally from other cards in the selected deck. Some bulleted answers become Choose every correct answer questions. Results include replay and review-missed options.</p></details>
+      <details><summary>Why are some cards unavailable in a game mode?</summary><p>Game tiles and answer choices must fit the current screen and font size. Multiple Choice also needs enough unique answers to create distractors. Every card remains available in regular Flashcards mode.</p></details>
+      <details><summary>How do updates work?</summary><p>When an update has downloaded, the app shows A new version is ready. Select Restart and update when convenient. Your locally stored decks and settings remain in place.</p></details>
+      <details><summary>Why can’t I import some PDFs or Word files?</summary><p>Scanned or image-only documents do not contain extractable text. Run OCR or convert the material to a text-based Word document before importing it.</p></details>
+      <details><summary>How do I get additional help?</summary><p>Visit the <a href="/support/">Support page</a> for troubleshooting steps and the link to submit a support request.</p></details>
+    </section>
+  </main>
+  <footer class="site-footer"><div class="footer-shell"><span>© 2026 Flashcard Flurry</span><nav class="footer-links" aria-label="Footer navigation"><a href="/app/">App</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/support/">Support</a></nav></div></footer>
+</body>
+</html>
