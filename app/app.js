@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -3846,7 +3846,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v61');
+      waitingWorker.postMessage('activate-v62');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }
