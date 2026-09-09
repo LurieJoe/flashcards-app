@@ -441,7 +441,7 @@ html[data-theme="dark"] .button.primary:hover {
 
 .showcase-heading {
   width: min(1240px, calc(100% - 32px));
-  margin: 0 auto 24px;
+  margin: 0 auto 18px;
 }
 
 .showcase-heading h2 {
@@ -456,7 +456,7 @@ html[data-theme="dark"] .button.primary:hover {
 
 .showcase-viewport {
   overflow: hidden;
-  padding-block: 4px;
+  padding-block: 28px 34px;
   outline-offset: 4px;
   mask-image: linear-gradient(
     to right,
@@ -481,11 +481,14 @@ html[data-theme="dark"] .button.primary:hover {
 
 .showcase-set {
   display: flex;
-  gap: 16px;
-  padding-right: 16px;
+  align-items: center;
+  gap: 14px;
+  padding-right: 14px;
 }
 
 .sample-card {
+  --card-lift: 0px;
+  --card-tilt: 0deg;
   width: 310px;
   min-height: 190px;
   padding: 20px;
@@ -493,6 +496,41 @@ html[data-theme="dark"] .button.primary:hover {
   border-radius: 16px;
   background: var(--cp-surface);
   box-shadow: 0 0 2px var(--cp-border), 0 1px 2px var(--cp-border);
+  transform: translateY(var(--card-lift)) rotate(var(--card-tilt));
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.sample-card:nth-child(4n + 1) {
+  --card-lift: 12px;
+  --card-tilt: -1.8deg;
+}
+
+.sample-card:nth-child(4n + 2) {
+  --card-lift: -10px;
+  --card-tilt: 1.4deg;
+}
+
+.sample-card:nth-child(4n + 3) {
+  --card-lift: 6px;
+  --card-tilt: -0.8deg;
+}
+
+.sample-card:nth-child(4n) {
+  --card-lift: -4px;
+  --card-tilt: 2deg;
+}
+
+.showcase-viewport:hover .sample-card:hover,
+.showcase-viewport:focus-within .sample-card:hover {
+  transform: translateY(calc(var(--card-lift) - 8px)) rotate(0deg);
+  box-shadow: 0 0 2px var(--cp-border), 0 8px 20px var(--cp-accent-soft);
+}
+
+.sample-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .sample-category {
@@ -508,9 +546,29 @@ html[data-theme="dark"] .button.primary:hover {
   text-transform: uppercase;
 }
 
+.sample-icon {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border: 1px solid var(--cp-border);
+  border-radius: 50%;
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  font-size: 0.9rem;
+  font-weight: 850;
+  line-height: 1;
+  transform: rotate(5deg);
+}
+
+.sample-icon--emoji {
+  font-size: 1.15rem;
+}
+
 .sample-question {
   min-height: 50px;
-  margin: 16px 0 14px;
+  margin: 14px 0;
   color: var(--cp-text);
   font-weight: 750;
   line-height: 1.35;
@@ -527,6 +585,10 @@ html[data-theme="dark"] .button.primary:hover {
 }
 
 @keyframes showcase-scroll {
+  50% {
+    transform: translateX(-25%) translateY(-3px);
+  }
+
   to {
     transform: translateX(-50%);
   }
@@ -646,6 +708,16 @@ code {
 
   .showcase-track {
     animation: none;
+  }
+
+  .sample-card {
+    transform: none;
+  }
+
+  .showcase-viewport:hover .sample-card:hover,
+  .showcase-viewport:focus-within .sample-card:hover {
+    transform: none;
+    box-shadow: 0 0 2px var(--cp-border), 0 1px 2px var(--cp-border);
   }
 
   .showcase-set[aria-hidden="true"] {
