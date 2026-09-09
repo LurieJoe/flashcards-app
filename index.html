@@ -24,10 +24,26 @@
   </script>
   <script>
     (() => {
+      const params = new URLSearchParams(window.location.search);
+      let publicSiteRequested = params.get("view") === "website";
+      try {
+        if (publicSiteRequested) {
+          sessionStorage.setItem("flashcard-flurry-public-site", "1");
+        } else {
+          publicSiteRequested = sessionStorage.getItem("flashcard-flurry-public-site") === "1";
+        }
+      } catch {}
+
+      if (params.has("view") && params.get("view") === "website") {
+        params.delete("view");
+        const query = params.toString();
+        history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+      }
+
       const standalone =
         window.navigator.standalone === true ||
         window.matchMedia("(display-mode: standalone)").matches;
-      if (standalone) {
+      if (standalone && !publicSiteRequested) {
         window.location.replace("/app/");
         return;
       }
