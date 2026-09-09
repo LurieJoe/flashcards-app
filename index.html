@@ -13,6 +13,17 @@
   </script>
   <script>
     (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const saved = localStorage.getItem("flashcard-flurry-site-theme");
+      const mode = param === "light" || param === "dark" ? param : saved;
+      if (mode === "light" || mode === "dark") {
+        document.documentElement.setAttribute("data-theme", mode);
+      }
+      document.documentElement.setAttribute("data-theme-mode", mode || "system");
+    })();
+  </script>
+  <script>
+    (() => {
       const standalone =
         window.navigator.standalone === true ||
         window.matchMedia("(display-mode: standalone)").matches;
@@ -106,7 +117,8 @@
   <link rel="manifest" href="/app/manifest.webmanifest" />
   <link rel="icon" href="/app/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/app/icons/icon-180.png" />
-  <link rel="stylesheet" href="/site.css?v=58" />
+  <link rel="stylesheet" href="/site.css?v=59" />
+  <script src="/site-theme.js?v=59" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -123,6 +135,10 @@
         <a href="/privacy/">Privacy Policy</a>
         <a href="/terms/">Terms of Use</a>
         <a href="/support/">Support</a>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Change theme">
+          <span data-theme-icon aria-hidden="true">◐</span>
+          <span data-theme-label>System</span>
+        </button>
       </nav>
     </div>
   </header>
@@ -156,7 +172,7 @@
         <article class="card">
           <div class="card-icon" aria-hidden="true">1</div>
           <h3>Make it yours</h3>
-          <p>Create cards individually, paste a list, import common file formats, or start with a built-in deck.</p>
+          <p>Create cards individually, paste a list, import common file formats, or start with one of 57 built-in decks.</p>
         </article>
         <article class="card">
           <div class="card-icon" aria-hidden="true">2</div>
@@ -199,6 +215,102 @@
       </div>
     </section>
   </main>
+
+  <section class="deck-showcase" aria-labelledby="deck-showcase-title">
+    <div class="showcase-heading">
+      <p class="eyebrow">Start studying immediately</p>
+      <h2 id="deck-showcase-title">57 ready-to-use decks—and your own</h2>
+      <p>Choose a category, create a deck on your device, and begin with Flashcards, Matching Pairs, or Multiple Choice.</p>
+    </div>
+    <div class="showcase-viewport" tabindex="0" aria-label="Examples from Flashcard Flurry’s built-in decks">
+      <div class="showcase-track">
+        <div class="showcase-set">
+          <article class="sample-card">
+            <span class="sample-category">Math</span>
+            <p class="sample-question">7 × 8</p>
+            <p class="sample-answer">56</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Telling Time</span>
+            <p class="sample-question">Read this clock: 🕢</p>
+            <p class="sample-answer">7:30</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Spanish</span>
+            <p class="sample-question">Spanish: library</p>
+            <p class="sample-answer">biblioteca</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Cell Biology</span>
+            <p class="sample-question">What controls which substances enter a cell?</p>
+            <p class="sample-answer">The cell membrane</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">World History</span>
+            <p class="sample-question">Which English charter was issued in 1215?</p>
+            <p class="sample-answer">Magna Carta</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Geography</span>
+            <p class="sample-question">Capital of Kenya?</p>
+            <p class="sample-answer">Nairobi</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Language Arts</span>
+            <p class="sample-question">A comparison using “like” or “as”?</p>
+            <p class="sample-answer">Simile</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Chemistry</span>
+            <p class="sample-question">Chemical symbol for gold?</p>
+            <p class="sample-answer">Au</p>
+          </article>
+        </div>
+        <div class="showcase-set" aria-hidden="true">
+          <article class="sample-card">
+            <span class="sample-category">Math</span>
+            <p class="sample-question">7 × 8</p>
+            <p class="sample-answer">56</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Telling Time</span>
+            <p class="sample-question">Read this clock: 🕢</p>
+            <p class="sample-answer">7:30</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Spanish</span>
+            <p class="sample-question">Spanish: library</p>
+            <p class="sample-answer">biblioteca</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Cell Biology</span>
+            <p class="sample-question">What controls which substances enter a cell?</p>
+            <p class="sample-answer">The cell membrane</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">World History</span>
+            <p class="sample-question">Which English charter was issued in 1215?</p>
+            <p class="sample-answer">Magna Carta</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Geography</span>
+            <p class="sample-question">Capital of Kenya?</p>
+            <p class="sample-answer">Nairobi</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Language Arts</span>
+            <p class="sample-question">A comparison using “like” or “as”?</p>
+            <p class="sample-answer">Simile</p>
+          </article>
+          <article class="sample-card">
+            <span class="sample-category">Chemistry</span>
+            <p class="sample-question">Chemical symbol for gold?</p>
+            <p class="sample-answer">Au</p>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <footer class="site-footer">
     <div class="footer-shell">

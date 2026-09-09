@@ -11,6 +11,17 @@
       document.documentElement.setAttribute("data-theme", theme);
     })();
   </script>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const saved = localStorage.getItem("flashcard-flurry-site-theme");
+      const mode = param === "light" || param === "dark" ? param : saved;
+      if (mode === "light" || mode === "dark") {
+        document.documentElement.setAttribute("data-theme", mode);
+      }
+      document.documentElement.setAttribute("data-theme-mode", mode || "system");
+    })();
+  </script>
   <style>
     :root {
       color-scheme: light;
@@ -69,11 +80,12 @@
   <meta name="description" content="Terms governing use of the Flashcard Flurry website and offline flashcard application." />
   <link rel="canonical" href="https://flashcardflurry.com/terms/" />
   <link rel="icon" href="/app/icons/icon-192.png" />
-  <link rel="stylesheet" href="/site.css?v=58" />
+  <link rel="stylesheet" href="/site.css?v=59" />
+  <script src="/site-theme.js?v=59" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <header class="site-header"><div class="nav-shell"><a class="brand" href="/"><img src="/app/icons/icon-192.png" alt="" /><span>Flashcard Flurry</span></a><nav class="site-nav" aria-label="Main navigation"><a href="/">Home</a><a class="nav-app" href="/app/">App</a><a href="/faq/">FAQ</a><a href="/privacy/">Privacy Policy</a><a href="/terms/" aria-current="page">Terms of Use</a><a href="/support/">Support</a></nav></div></header>
+  <header class="site-header"><div class="nav-shell"><a class="brand" href="/"><img src="/app/icons/icon-192.png" alt="" /><span>Flashcard Flurry</span></a><nav class="site-nav" aria-label="Main navigation"><a href="/">Home</a><a class="nav-app" href="/app/">App</a><a href="/faq/">FAQ</a><a href="/privacy/">Privacy Policy</a><a href="/terms/" aria-current="page">Terms of Use</a><a href="/support/">Support</a><button class="theme-toggle" type="button" data-theme-toggle aria-label="Change theme"><span data-theme-icon aria-hidden="true">◐</span><span data-theme-label>System</span></button></nav></div></header>
   <main id="main" class="page-shell">
     <p class="eyebrow">Effective September 7, 2026</p>
     <h1 class="page-title">Terms of Use</h1>
