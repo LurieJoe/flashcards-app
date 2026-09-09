@@ -19,14 +19,14 @@ Three tabs — **Home**, **Study**, and **Import**:
 - **Multiple decks:** create, rename, delete, reorder, and switch decks. Cards are
   saved per-deck. The Study list has an accessible three-line reorder control that
   reveals **Move up** and **Move down** buttons.
-- **Auto-create a deck (Import tab):** choose a built-in deck (e.g. *Animals*,
-  *World Flags*, or *Spanish Vocabulary*) and pick a card count (10/25/50/All) to
-  instantly build a deck from a bundled knowledge base — generated **on-device**,
-  nothing leaves your phone. Built-in packs: Animals, World Capitals, World Flags,
-  US State Capitals, US Presidents, Multiplication Tables, Chemical Elements,
-  Spanish Vocabulary, French Vocabulary, Portuguese Vocabulary, Planets & Space,
-  US Civics Basics, Colors, and Shapes.
-- **Streamlined Import tab:** choose built-in decks from a dropdown, import a supported
+- **Auto-create a deck (Import tab):** choose from **57 built-in decks** and pick a
+  card count (10/25/50/All) to instantly build a deck from a bundled knowledge base —
+  generated **on-device**, so nothing leaves your phone. Decks are organized into eight
+  categories: Early Learning & Everyday Basics, Math, Life Science & Health, Physical,
+  Earth & Space Science, Language Arts, Geography & Civics, History, Arts & Culture,
+  and World Languages. The catalog includes everything from *Animals*, *Fractions*,
+  and *Human Body* to *World Flags*, *US Presidents*, and seven language decks.
+- **Streamlined Import tab:** filter categorized built-in decks, import a supported
   file, export the selected deck, or expand **Create or edit cards** only when you need
   the bulk card editor and its formatting instructions.
 - **World Flags:** creates up to 195 visual-recognition cards with a flag emoji on the

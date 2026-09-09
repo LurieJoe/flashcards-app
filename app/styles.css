@@ -561,13 +561,25 @@ main {
   margin-bottom: 14px;
 }
 .generator h3 { margin: 0 0 10px; font-size: 16px; }
+.generator > .help { margin: -3px 0 12px; }
 .gen-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(210px, 1.5fr) auto auto;
+  align-items: end;
   gap: 8px;
-  flex-wrap: wrap;
 }
-#gen-topic {
-  flex: 1 1 180px;
+.gen-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.gen-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.gen-field select {
+  width: 100%;
   min-width: 0;
   background: var(--bg);
   color: var(--text);
@@ -577,14 +589,19 @@ main {
   font-size: 15px;
 }
 #gen-count {
-  flex: 0 0 auto;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--surface-2);
-  border-radius: 10px;
-  padding: 10px 8px;
-  font-size: 15px;
+  min-width: 76px;
   font-weight: 600;
+}
+.gen-row > .btn { min-height: 42px; }
+@media (max-width: 700px) {
+  .gen-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .gen-deck-field { grid-column: 1 / -1; grid-row: 2; }
+  .gen-row > .btn { grid-column: 1 / -1; }
+}
+@media (max-width: 430px) {
+  .gen-row { grid-template-columns: 1fr; }
+  .gen-deck-field { grid-column: auto; grid-row: auto; }
+  .gen-row > .btn { grid-column: auto; width: 100%; }
 }
 .deck-list-heading {
   display: flex;
@@ -1336,16 +1353,16 @@ main {
 }
 .match-tile {
   min-width: 0;
-  height: 76px;
+  height: calc(100px * var(--fscale));
   padding: 7px 9px;
   border: 2px solid var(--surface-2);
   border-radius: 12px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: calc(15px * var(--fscale));
+  font-size: calc(13px * var(--fscale));
   font-weight: 600;
-  line-height: 1.18;
+  line-height: 1.14;
   overflow: hidden;
   overflow-wrap: anywhere;
   cursor: pointer;

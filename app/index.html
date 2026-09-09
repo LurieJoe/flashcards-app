@@ -336,33 +336,32 @@
 
       <section class="generator">
         <h3>✨ Auto-create a deck</h3>
+        <p class="help">Choose from 57 built-in decks, organized into eight categories. Nothing is created until you select Generate.</p>
         <form id="gen-form" class="gen-row">
-          <select id="gen-topic" aria-label="Built-in deck">
-            <option value="">Choose a deck</option>
-            <option value="Animals">Animals</option>
-            <option value="US State Capitals">US State Capitals</option>
-            <option value="World Capitals">World Capitals</option>
-            <option value="World Flags">World Flags</option>
-            <option value="US Presidents">US Presidents</option>
-            <option value="Multiplication Tables">Multiplication Tables</option>
-            <option value="Chemical Elements">Chemical Elements</option>
-            <option value="Spanish Vocabulary">Spanish Vocabulary</option>
-            <option value="French Vocabulary">French Vocabulary</option>
-            <option value="Portuguese Vocabulary">Portuguese Vocabulary</option>
-            <option value="Planets &amp; Space">Planets &amp; Space</option>
-            <option value="US Civics Basics">US Civics Basics</option>
-            <option value="Colors">Colors</option>
-            <option value="Shapes">Shapes</option>
-          </select>
-          <select id="gen-count" aria-label="Number of cards">
-            <option value="10">10</option>
-            <option value="25" selected>25</option>
-            <option value="50">50</option>
-            <option value="0">All</option>
-          </select>
+          <label class="gen-field">
+            <span>Category</span>
+            <select id="gen-category">
+              <option value="">All categories</option>
+            </select>
+          </label>
+          <label class="gen-field gen-deck-field">
+            <span>Built-in deck</span>
+            <select id="gen-topic">
+              <option value="">Choose a deck</option>
+            </select>
+          </label>
+          <label class="gen-field gen-count-field">
+            <span>Cards</span>
+            <select id="gen-count">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="0">All</option>
+            </select>
+          </label>
           <button type="submit" id="gen-btn" class="btn primary">Generate</button>
         </form>
-        <p id="gen-status" class="status"></p>
+        <p id="gen-status" class="status" aria-live="polite"></p>
       </section>
 
       <div class="import-row">

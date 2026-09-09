@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -2850,15 +2850,61 @@ document.getElementById('save-btn').addEventListener('click', () => {
 
 /* ---------- Auto-generate a deck from a topic (offline packs) ---------- */
 (function initGenerator() {
+  const categoryEl = document.getElementById('gen-category');
   const topicEl = document.getElementById('gen-topic');
-  if (topicEl && topicEl.tagName === 'SELECT' && topicEl.options.length <= 1 && window.TOPIC_PACKS) {
-    for (const pack of window.TOPIC_PACKS) {
+  const categories = Array.isArray(window.TOPIC_CATEGORIES) ? window.TOPIC_CATEGORIES : [];
+  const packs = Array.isArray(window.TOPIC_PACKS) ? window.TOPIC_PACKS : [];
+
+  if (categoryEl && categoryEl.options.length <= 1) {
+    for (const category of categories) {
       const option = document.createElement('option');
-      option.value = pack.name;
-      option.textContent = pack.name;
-      topicEl.appendChild(option);
+      option.value = category.id;
+      option.textContent = category.name;
+      categoryEl.appendChild(option);
     }
   }
+
+  function populateGeneratorDecks() {
+    if (!topicEl) return;
+    const selectedCategory = categoryEl ? categoryEl.value : '';
+    const previousValue = topicEl.value;
+    topicEl.textContent = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Choose a deck';
+    topicEl.appendChild(placeholder);
+
+    if (!selectedCategory && categories.length) {
+      for (const category of categories) {
+        const groupPacks = packs.filter(pack => pack.category === category.id);
+        if (!groupPacks.length) continue;
+        const group = document.createElement('optgroup');
+        group.label = category.name;
+        for (const pack of groupPacks) {
+          const option = document.createElement('option');
+          option.value = pack.id;
+          option.textContent = pack.name;
+          group.appendChild(option);
+        }
+        topicEl.appendChild(group);
+      }
+    } else {
+      for (const pack of packs.filter(pack => !selectedCategory || pack.category === selectedCategory)) {
+        const option = document.createElement('option');
+        option.value = pack.id;
+        option.textContent = pack.name;
+        topicEl.appendChild(option);
+      }
+    }
+
+    if (packs.some(pack => pack.id === previousValue && (!selectedCategory || pack.category === selectedCategory))) {
+      topicEl.value = previousValue;
+    }
+  }
+
+  if (topicEl && packs.length) populateGeneratorDecks();
+  if (categoryEl) categoryEl.addEventListener('change', populateGeneratorDecks);
+
   const form = document.getElementById('gen-form');
   if (!form) return;
   const statusEl = document.getElementById('gen-status');
@@ -2869,10 +2915,9 @@ document.getElementById('save-btn').addEventListener('click', () => {
     const count = parseInt(document.getElementById('gen-count').value, 10) || 0;
     if (!topic) { setGenStatus('Choose a built-in deck first.', false); return; }
 
-    const pack = window.matchTopic(topic);
+    const pack = packs.find(candidate => candidate.id === topic) || window.matchTopic(topic);
     if (!pack) {
-      const names = window.TOPIC_PACKS.map(p => p.name).join(', ');
-      setGenStatus(`No built-in pack for “${topic}”. Try one of: ${names}.`, false);
+      setGenStatus('That built-in deck is unavailable. Choose another deck and try again.', false);
       return;
     }
 
@@ -3795,7 +3840,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v56');
+      waitingWorker.postMessage('activate-v57');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }
