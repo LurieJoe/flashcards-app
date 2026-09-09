@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -2587,7 +2587,7 @@ const TIPS = [
     text: 'On the Import tab, tap “Import file” to load a Word .docx, a .csv/.txt list, or a .json deck. Review duplicate warnings before saving. Use “Export selected deck” to create a portable backup or sharing file.' },
   { ico: '✨', view: 'edit',
     title: 'Start with a built-in deck',
-    text: 'On the Import tab, choose from 57 decks organized into eight categories. Select 10, 25, 50, or all available cards, then tap Generate. Nothing is added until you generate it.' },
+    text: 'On the Import tab, choose from 50+ decks organized into eight categories. Select 10, 25, 50, or all available cards, then tap Generate. Nothing is added until you generate it.' },
   { ico: '🕢', view: 'edit',
     title: 'Practice telling time',
     text: 'Choose “Telling Time with Analog Clocks” to practice reading clock emojis, plus questions about times one hour or 30 minutes later.' },
@@ -3846,7 +3846,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v60');
+      waitingWorker.postMessage('activate-v61');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }

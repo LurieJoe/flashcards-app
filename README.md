@@ -19,7 +19,7 @@ Three tabs — **Home**, **Study**, and **Import**:
 - **Multiple decks:** create, rename, delete, reorder, and switch decks. Cards are
   saved per-deck. The Study list has an accessible three-line reorder control that
   reveals **Move up** and **Move down** buttons.
-- **Auto-create a deck (Import tab):** choose from **57 built-in decks** and pick a
+- **Auto-create a deck (Import tab):** choose from **50+ built-in decks** and pick a
   card count (10/25/50/All) to instantly build a deck from a bundled knowledge base —
   generated **on-device**, so nothing leaves your phone. Decks are organized into eight
   categories: Early Learning & Everyday Basics, Math, Life Science & Health, Physical,
