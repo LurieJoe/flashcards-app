@@ -902,6 +902,33 @@
     ]);
   }
 
+  function synonymAntonymCards() {
+    const [, records] = LESSON_DECKS['synonyms-antonyms'];
+    return records.flatMap(([term, definition, example]) => {
+      const relationship = example.match(/^(.+?) is an? (synonym|antonym) of (.+)$/i);
+      if (relationship) {
+        const [, word, kind, counterpart] = relationship;
+        const label = kind === 'synonym' ? 'Synonym' : 'Antonym';
+        return [
+          { q: `What does ${word} mean?`, a: definition },
+          { q: `Which word means "${definition}"?`, a: word },
+          { q: `${label} for ${word}?`, a: counterpart },
+          { q: `${label} for ${counterpart}?`, a: word },
+        ];
+      }
+
+      const [first, second] = example.split(' and ');
+      const relationshipName = `${term.toLowerCase()}s`;
+      const article = term === 'Antonym' ? 'an' : 'a';
+      return [
+        { q: `What is ${article} ${term.toLowerCase()}?`, a: definition },
+        { q: `Which term means "${definition}"?`, a: term },
+        { q: `Which pair is an example of ${relationshipName}?`, a: example },
+        { q: `What relationship do ${first} and ${second} have?`, a: `They are ${relationshipName}.` },
+      ];
+    });
+  }
+
   function additionCards() {
     const out = [];
     for (let a = 0; a <= 12; a++) for (let b = 0; b <= 12; b++) out.push({ q: `${a} + ${b}`, a: String(a + b) });
@@ -1106,7 +1133,7 @@
     pack('parts-speech', 'Parts of Speech', 'language-arts', ['grammar', 'nouns', 'verbs'], () => lessonCards('parts-speech')),
     pack('grammar', 'Grammar Basics', 'language-arts', ['sentences', 'clauses'], () => lessonCards('grammar')),
     pack('punctuation', 'Punctuation', 'language-arts', ['punctuation marks'], () => lessonCards('punctuation')),
-    pack('synonyms-antonyms', 'Synonyms & Antonyms', 'language-arts', ['synonyms', 'antonyms', 'word meanings'], () => lessonCards('synonyms-antonyms')),
+    pack('synonyms-antonyms', 'Synonyms & Antonyms', 'language-arts', ['synonyms', 'antonyms', 'word meanings'], synonymAntonymCards),
     pack('roots-prefixes-suffixes', 'Roots, Prefixes & Suffixes', 'language-arts', ['word roots', 'prefixes', 'suffixes'], () => lessonCards('roots-prefixes-suffixes')),
     pack('commonly-confused', 'Commonly Confused Words', 'language-arts', ['confused words', 'homophones'], () => lessonCards('commonly-confused')),
     pack('literary-terms', 'Literary Terms', 'language-arts', ['literature', 'figurative language'], () => lessonCards('literary-terms')),

@@ -88,3 +88,19 @@ const clockEmoji = new Set(
 assert(clockCards.length >= 50, 'Telling Time with Analog Clocks needs at least 50 cards.');
 assert(clockEmoji.size === 24, `Expected all 24 clock emojis; found ${clockEmoji.size}.`);
 console.log(`Telling Time uses all ${clockEmoji.size} clock emojis across ${clockCards.length} cards.`);
+
+const wordRelationshipPack = packs.find(pack => pack.id === 'synonyms-antonyms');
+const wordRelationshipCards = wordRelationshipPack.all();
+assert(
+  !wordRelationshipCards.some(card => normalize(card.q).includes('key example')),
+  'Synonyms & Antonyms must use direct relationship questions instead of "Key example" prompts.'
+);
+assert(
+  wordRelationshipCards.some(card => normalize(card.q) === 'antonym for scarce?' && normalize(card.a) === 'plentiful'),
+  'Synonyms & Antonyms must ask directly for the antonym of scarce.'
+);
+assert(
+  wordRelationshipCards.some(card => normalize(card.q) === 'synonym for rapid?' && normalize(card.a) === 'quick'),
+  'Synonyms & Antonyms must ask directly for the synonym of rapid.'
+);
+console.log('Synonyms & Antonyms uses direct synonym and antonym recall prompts.');
