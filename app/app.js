@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -73,13 +73,14 @@ function uid(prefix = 'd') { return prefix + Date.now().toString(36) + Math.rand
 const PROFILES_KEY = 'flashcards.profiles.v1';
 const PROFILE_SUFFIXES = [
   'data.v2', 'studySession.v1', 'pref.sound', 'pref.timer', 'pref.font',
-  'theme', 'accent', 'samplesSeeded',
+  'pref.highContrast', 'theme', 'accent', 'samplesSeeded',
 ];
 const LEGACY_GLOBAL = {
   'data.v2': 'flashcards.data.v2',
   'pref.sound': 'flashcards.pref.sound',
   'pref.timer': 'flashcards.pref.timer',
   'pref.font': 'flashcards.pref.font',
+  'pref.highContrast': 'flashcards.pref.highContrast',
   'theme': 'flashcards.theme',
   'accent': 'flashcards.accent',
   'samplesSeeded': 'flashcards.samplesSeeded',
@@ -2455,6 +2456,7 @@ const PREF = {
   get sound() { return K('pref.sound'); },
   get timer() { return K('pref.timer'); },
   get font() { return K('pref.font'); },
+  get highContrast() { return K('pref.highContrast'); },
   get tipsStartup() { return K('pref.tipsStartup'); },
   get tipsNavigate() { return K('pref.tipsNavigate'); },
   get tipIndex() { return K('pref.tipIndex'); },
@@ -2557,8 +2559,10 @@ function applyFont() {
 function initPrefs() {
   const sound = document.getElementById('pref-sound');
   const timer = document.getElementById('pref-timer');
+  const highContrast = document.getElementById('pref-high-contrast');
   sound.checked = prefBool(PREF.sound, false);
   timer.checked = prefBool(PREF.timer, false);
+  highContrast.checked = prefBool(PREF.highContrast, false);
   sound.addEventListener('change', () => {
     localStorage.setItem(PREF.sound, sound.checked ? '1' : '0');
     if (sound.checked) playDing();
@@ -2569,6 +2573,10 @@ function initPrefs() {
       views.study.classList.contains('active');
     if (timer.checked && studying) startTimer();
     else if (!timer.checked) { stopTimer(); timerEl.classList.add('hidden'); }
+  });
+  highContrast.addEventListener('change', () => {
+    localStorage.setItem(PREF.highContrast, highContrast.checked ? '1' : '0');
+    applyTheme();
   });
   document.querySelectorAll('#font-size .seg').forEach(b =>
     b.addEventListener('click', () => { localStorage.setItem(PREF.font, b.dataset.font); applyFont(); }));
@@ -2638,7 +2646,7 @@ const TIPS = [
     text: 'In the individual card editor, tap “• List” to add, delete, and reorder items. Lists appear there as real bullet lines, so you never need to type a bullet character. Semicolon-separated lists still work in the bulk editor.' },
   { ico: '🎨', view: 'home',
     title: 'Make it yours',
-    text: 'Open ⚙ Settings to change the theme, accent color, font size, and sound — each profile has its own.' },
+    text: 'Open ⚙ Settings to change the theme, accent color, high contrast, font size, and sound — each profile has its own.' },
 ];
 
 function tipItemHTML(t) {
@@ -3658,17 +3666,21 @@ function getAccent() { return localStorage.getItem(K('accent')) || 'indigo'; }
 function applyTheme() {
   const mode = getTheme();
   const accent = getAccent();
+  const highContrast = prefBool(PREF.highContrast, false);
   document.documentElement.setAttribute('data-theme', mode);
   document.documentElement.setAttribute('data-accent', accent);
+  document.documentElement.setAttribute('data-contrast', highContrast ? 'high' : 'normal');
   document.querySelectorAll('#theme-mode .seg').forEach(b =>
     b.classList.toggle('active', b.dataset.mode === mode));
   document.querySelectorAll('#accent-swatches .swatch').forEach(b =>
     b.classList.toggle('active', b.dataset.accent === accent));
+  const highContrastToggle = document.getElementById('pref-high-contrast');
+  if (highContrastToggle) highContrastToggle.checked = highContrast;
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
     const dark = mode === 'dark' ||
       (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    meta.setAttribute('content', dark ? '#0f172a' : '#f8fafc');
+    meta.setAttribute('content', highContrast ? (dark ? '#000000' : '#ffffff') : (dark ? '#0f172a' : '#f8fafc'));
   }
 }
 
@@ -3846,7 +3858,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v63');
+      waitingWorker.postMessage('activate-v64');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }

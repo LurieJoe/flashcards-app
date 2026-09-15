@@ -7,6 +7,9 @@
   --text: #f1f5f9;
   --muted: #94a3b8;
   --danger: #ef4444;
+  --success: #22c55e;
+  --focus: #facc15;
+  --contrast-border: var(--surface-2);
   --radius: 16px;
   --fscale: 1;
 }
@@ -34,6 +37,8 @@
   --surface-2: #e2e8f0;
   --text: #0f172a;
   --muted: #64748b;
+  --success: #15803d;
+  --focus: #1d4ed8;
 }
 /* System: follow the device when no explicit choice is stored. */
 @media (prefers-color-scheme: light) {
@@ -43,6 +48,8 @@
     --surface-2: #e2e8f0;
     --text: #0f172a;
     --muted: #64748b;
+    --success: #15803d;
+    --focus: #1d4ed8;
   }
 }
 
@@ -56,7 +63,95 @@
 [data-accent="orange"] { --primary: #ea580c; --primary-2: #f97316; }
 [data-accent="cranberry"] { --primary: #a4133c; --primary-2: #c9184a; }
 
+/* High contrast is independent of theme and remains a per-profile choice. */
+[data-contrast="high"] {
+  --bg: #000000;
+  --surface: #000000;
+  --surface-2: #262626;
+  --primary: #005fcc;
+  --primary-2: #00479b;
+  --text: #ffffff;
+  --muted: #ffffff;
+  --danger: #ff6b7a;
+  --success: #6ee7a0;
+  --focus: #ffdd00;
+  --contrast-border: #ffffff;
+}
+
+[data-theme="light"][data-contrast="high"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #e5e5e5;
+  --primary: #003b8f;
+  --primary-2: #002968;
+  --text: #000000;
+  --muted: #000000;
+  --danger: #a4001d;
+  --success: #006b2e;
+  --focus: #003b8f;
+  --contrast-border: #000000;
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme="system"][data-contrast="high"] {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #e5e5e5;
+    --primary: #003b8f;
+    --primary-2: #002968;
+    --text: #000000;
+    --muted: #000000;
+    --danger: #a4001d;
+    --success: #006b2e;
+    --focus: #003b8f;
+    --contrast-border: #000000;
+  }
+}
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+[data-contrast="high"] :is(
+  button,
+  input,
+  select,
+  textarea,
+  .modal-card,
+  .profile-pick,
+  .tabs,
+  .font-preview,
+  .resume-study-panel,
+  .generator,
+  .study-mode-option,
+  .deck-item,
+  .backup-restore,
+  .card-manager-row,
+  .import-preview-item,
+  .restore-option,
+  .hidden-decks-box,
+  .match-tile,
+  .match-complete,
+  .choice-question,
+  .choice-option,
+  .choice-complete,
+  .manual-editor,
+  .settings-group
+) {
+  border-color: var(--contrast-border);
+}
+
+[data-contrast="high"] :is(.match-tile, .choice-option, .study-mode-option) {
+  border-width: 3px;
+}
+
+[data-contrast="high"] .match-tile.matched {
+  opacity: 1;
+  filter: none;
+}
 
 html, body {
   margin: 0;
@@ -1383,8 +1478,8 @@ main {
   animation: match-shake .28s ease;
 }
 .match-tile.matched {
-  border-color: #22c55e;
-  background: color-mix(in srgb, #22c55e 20%, var(--surface));
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 20%, var(--surface));
   opacity: 0.48;
   filter: saturate(0.65);
   pointer-events: none;
@@ -1479,15 +1574,15 @@ main {
   background: color-mix(in srgb, var(--primary) 18%, var(--surface));
 }
 .choice-option.correct {
-  border-color: #22c55e;
-  background: color-mix(in srgb, #22c55e 20%, var(--surface));
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 20%, var(--surface));
 }
 .choice-option.incorrect {
   border-color: var(--danger);
   background: color-mix(in srgb, var(--danger) 18%, var(--surface));
   animation: match-shake .28s ease;
 }
-.choice-option.missed { border-color: #22c55e; border-style: dashed; }
+.choice-option.missed { border-color: var(--success); border-style: dashed; }
 .choice-option:disabled { color: var(--text); cursor: default; opacity: 1; }
 .choice-status {
   min-height: 1.4em;
@@ -1496,7 +1591,7 @@ main {
   font-size: 14px;
   font-weight: 600;
 }
-.choice-status.success { color: #22c55e; }
+.choice-status.success { color: var(--success); }
 .choice-status.error { color: var(--danger); }
 .choice-action { width: 100%; }
 .choice-complete {
@@ -1598,7 +1693,7 @@ textarea {
 
 .status {
   min-height: 20px;
-  color: #4ade80;
+  color: var(--success);
   font-size: 14px;
 }
 
@@ -1735,3 +1830,81 @@ textarea {
 /* Font scale applied to a few more reading surfaces */
 .welcome p { font-size: calc(16px * var(--fscale)); }
 .deck-item-name { font-size: calc(16px * var(--fscale)); }
+
+[data-contrast="high"] :is(button, input, select, textarea, a.btn) {
+  border-width: 2px;
+  border-style: solid;
+}
+
+[data-contrast="high"] :is(input, select, textarea) {
+  border-width: 2px !important;
+  border-style: solid !important;
+  border-color: var(--contrast-border) !important;
+}
+
+[data-contrast="high"] :is(
+  .modal-card,
+  .tabs,
+  .font-preview,
+  .resume-study-panel,
+  .generator,
+  .study-mode-option,
+  .deck-item,
+  .backup-restore,
+  .card-manager-row,
+  .import-preview-item,
+  .restore-option,
+  .hidden-decks-box,
+  .match-complete,
+  .choice-question,
+  .choice-complete,
+  .manual-editor,
+  .settings-group,
+  .segmented
+) {
+  border-width: 2px;
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid Highlight;
+  }
+
+  html :is(
+    .tab.active,
+    .seg.active,
+    .swatch.active,
+    .study-mode-option.active,
+    .match-tile.selected,
+    .choice-option.selected
+  ) {
+    forced-color-adjust: none;
+    border: 4px double Highlight;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  html :is(.match-tile.wrong, .choice-option.incorrect) {
+    forced-color-adjust: none;
+    border: 4px dashed CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  html :is(.match-tile.matched, .choice-option.correct) {
+    forced-color-adjust: none;
+    border: 4px double Highlight;
+    background: Canvas;
+    color: CanvasText;
+    text-decoration: underline;
+    opacity: 1;
+    filter: none;
+  }
+
+  html .choice-option.missed {
+    forced-color-adjust: none;
+    border: 4px dashed Highlight;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

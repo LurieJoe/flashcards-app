@@ -20,21 +20,31 @@
     // Apply saved theme/accent before first paint to avoid a flash (per active profile).
     (function () {
       try {
-        var t = 'system', a = 'indigo', pid = null;
+        var t = 'system', a = 'indigo', c = 'normal', pid = null;
         var pj = localStorage.getItem('flashcards.profiles.v1');
         if (pj) { try { pid = (JSON.parse(pj) || {}).activeId; } catch (e) {} }
         if (pid) {
           t = localStorage.getItem('flashcards.p.' + pid + '.theme') || 'system';
           a = localStorage.getItem('flashcards.p.' + pid + '.accent') || 'indigo';
+          c = localStorage.getItem('flashcards.p.' + pid + '.pref.highContrast') === '1' ? 'high' : 'normal';
         } else {
           t = localStorage.getItem('flashcards.theme') || 'system';
           a = localStorage.getItem('flashcards.accent') || 'indigo';
+          c = localStorage.getItem('flashcards.pref.highContrast') === '1' ? 'high' : 'normal';
         }
         document.documentElement.setAttribute('data-theme', t);
         document.documentElement.setAttribute('data-accent', a);
+        document.documentElement.setAttribute('data-contrast', c);
+        var dark = t === 'dark' ||
+          (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', c === 'high'
+          ? (dark ? '#000000' : '#ffffff')
+          : (dark ? '#0f172a' : '#f8fafc'));
       } catch (e) {
         document.documentElement.setAttribute('data-theme', 'system');
         document.documentElement.setAttribute('data-accent', 'indigo');
+        document.documentElement.setAttribute('data-contrast', 'normal');
       }
     })();
   </script>
@@ -446,6 +456,10 @@
             <button type="button" class="swatch" data-accent="cranberry" style="--sw:#a4133c" title="Cranberry" aria-label="Cranberry"></button>
           </div>
         </div>
+        <label class="toggle-row">
+          <input type="checkbox" id="pref-high-contrast" />
+          <span>High contrast (stronger text, borders, and focus indicators)</span>
+        </label>
       </section>
 
       <section class="settings-group">
