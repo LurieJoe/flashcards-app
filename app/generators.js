@@ -1127,6 +1127,297 @@
     return lessonQA(records);
   }
 
+  /* ---------- Music and sight-reading decks ---------- */
+  const MUSIC_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const MUSIC_SEMITONES = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+
+  function musicToken(kind, ...parts) {
+    return `{{music:${kind}|${parts.join('|')}}}`;
+  }
+
+  function parseGeneratorPitch(pitch) {
+    const match = /^([A-G])([#bn]?)(\d)$/.exec(pitch);
+    if (!match) throw new Error(`Invalid generated music pitch: ${pitch}`);
+    return { letter: match[1], accidental: match[2], octave: Number(match[3]) };
+  }
+
+  function pitchLabel(pitch) {
+    const parsed = parseGeneratorPitch(pitch);
+    const accidental = parsed.accidental === '#' ? '♯'
+      : parsed.accidental === 'b' ? '♭'
+        : parsed.accidental === 'n' ? '♮' : '';
+    return `${parsed.letter}${accidental}${parsed.octave}`;
+  }
+
+  function pitchRange(start, end) {
+    const first = parseGeneratorPitch(start);
+    const last = parseGeneratorPitch(end);
+    const firstIndex = first.octave * 7 + MUSIC_LETTERS.indexOf(first.letter);
+    const lastIndex = last.octave * 7 + MUSIC_LETTERS.indexOf(last.letter);
+    const pitches = [];
+    for (let index = firstIndex; index <= lastIndex; index++) {
+      pitches.push(`${MUSIC_LETTERS[index % 7]}${Math.floor(index / 7)}`);
+    }
+    return pitches;
+  }
+
+  function addAccidental(pitch, accidental) {
+    return `${pitch[0]}${accidental}${pitch.slice(1)}`;
+  }
+
+  function clefNoteCards(clef, start, end) {
+    const naturalPitches = pitchRange(start, end);
+    return [
+      ...naturalPitches.map(pitch => ({
+        q: musicToken('note', clef, pitch),
+        a: `${pitchLabel(pitch)} — ${clef} clef`,
+      })),
+      ...naturalPitches.map(pitch => {
+        const sharp = addAccidental(pitch, '#');
+        return { q: musicToken('note', clef, sharp), a: `${pitchLabel(sharp)} — ${clef} clef` };
+      }),
+      ...naturalPitches.map(pitch => {
+        const flat = addAccidental(pitch, 'b');
+        return { q: musicToken('note', clef, flat), a: `${pitchLabel(flat)} — ${clef} clef` };
+      }),
+      ...naturalPitches.slice(0, 5).map(pitch => {
+        const natural = addAccidental(pitch, 'n');
+        return {
+          q: musicToken('note', clef, natural),
+          a: `${pitchLabel(natural)} — explicit natural sign on ${clef} clef`,
+        };
+      }),
+    ];
+  }
+
+  function grandStaffCards() {
+    const cards = [];
+    const ranges = [
+      ['bass', 'C2', 'B3', 6, 5],
+      ['treble', 'C4', 'C6', 5, 5],
+    ];
+    for (const [clef, start, end, sharpCount, flatCount] of ranges) {
+      const pitches = pitchRange(start, end);
+      const variants = [
+        ...pitches,
+        ...pitches.slice(0, sharpCount).map(pitch => addAccidental(pitch, '#')),
+        ...pitches.slice(0, flatCount).map(pitch => addAccidental(pitch, 'b')),
+      ];
+      cards.push(...variants.map(pitch => ({
+        q: musicToken('grand', clef, pitch),
+        a: `Grand staff, ${clef} clef: ${pitchLabel(pitch)}`,
+      })));
+    }
+    return cards;
+  }
+
+  const RHYTHM_SYMBOLS = [
+    ['w', 'Whole note', 4],
+    ['h', 'Half note', 2],
+    ['q', 'Quarter note', 1],
+    ['e', 'Eighth note', 0.5],
+    ['s', 'Sixteenth note', 0.25],
+    ['wr', 'Whole rest', 4],
+    ['hr', 'Half rest', 2],
+    ['qr', 'Quarter rest', 1],
+    ['er', 'Eighth rest', 0.5],
+    ['sr', 'Sixteenth rest', 0.25],
+  ];
+
+  function formatBeatCount(value) {
+    return Number.isInteger(value) ? String(value) : String(value).replace('0.25', '¼').replace('0.5', '½');
+  }
+
+  function rhythmCards() {
+    const singles = RHYTHM_SYMBOLS.map(([code, name, beats]) => ({
+      q: musicToken('rhythm', code),
+      a: `${name} — ${formatBeatCount(beats)} beat${beats === 1 ? '' : 's'} in 4/4`,
+    }));
+    const patterns = [];
+    for (const first of RHYTHM_SYMBOLS) {
+      for (const second of RHYTHM_SYMBOLS) {
+        if (patterns.length >= 40) break;
+        patterns.push({
+          q: musicToken('rhythm', `${first[0]}+${second[0]}`),
+          a: `${first[1]} + ${second[1]} — ${formatBeatCount(first[2] + second[2])} beats total`,
+        });
+      }
+      if (patterns.length >= 40) break;
+    }
+    return singles.concat(patterns);
+  }
+
+  const TIME_SIGNATURES = [
+    [2, 4, 'simple duple'], [3, 4, 'simple triple'], [4, 4, 'simple quadruple'],
+    [5, 4, 'asymmetrical quintuple'], [6, 4, 'compound duple at a broad pulse'],
+    [2, 2, 'cut time or simple duple'], [3, 8, 'simple triple'],
+    [6, 8, 'compound duple'], [9, 8, 'compound triple'], [12, 8, 'compound quadruple'],
+    [5, 8, 'asymmetrical quintuple'], [7, 8, 'asymmetrical septuple'],
+  ];
+
+  function beatUnitName(denominator) {
+    return ({ 2: 'half note', 4: 'quarter note', 8: 'eighth note' })[denominator];
+  }
+
+  function timeSignatureCards() {
+    const cards = TIME_SIGNATURES.flatMap(([top, bottom, meter]) => {
+      const signature = `${top}/${bottom}`;
+      const unit = beatUnitName(bottom);
+      return [
+        {
+          q: musicToken('time', top, bottom),
+          a: `Identify: ${signature} (${meter})`,
+        },
+        {
+          q: `Top number in ${signature}?`,
+          a: `${signature}: ${top} beats per measure`,
+        },
+        {
+          q: `Bottom number in ${signature}?`,
+          a: `${signature}: ${unit} beat unit`,
+        },
+        {
+          q: `Meter type of ${signature}?`,
+          a: `Meter: ${meter} in ${signature}`,
+        },
+      ];
+    });
+    cards.push(
+      { q: musicToken('time', 'common'), a: 'Common-time symbol — another way to write 4/4' },
+      { q: musicToken('time', 'cut'), a: 'Cut-time symbol — another way to write 2/2' },
+    );
+    return cards;
+  }
+
+  const KEY_SIGNATURES = [
+    [-7, 'C♭ major', 'A♭ minor', 'B♭, E♭, A♭, D♭, G♭, C♭, F♭'],
+    [-6, 'G♭ major', 'E♭ minor', 'B♭, E♭, A♭, D♭, G♭, C♭'],
+    [-5, 'D♭ major', 'B♭ minor', 'B♭, E♭, A♭, D♭, G♭'],
+    [-4, 'A♭ major', 'F minor', 'B♭, E♭, A♭, D♭'],
+    [-3, 'E♭ major', 'C minor', 'B♭, E♭, A♭'],
+    [-2, 'B♭ major', 'G minor', 'B♭, E♭'],
+    [-1, 'F major', 'D minor', 'B♭'],
+    [0, 'C major', 'A minor', 'no sharps or flats'],
+    [1, 'G major', 'E minor', 'F♯'],
+    [2, 'D major', 'B minor', 'F♯, C♯'],
+    [3, 'A major', 'F♯ minor', 'F♯, C♯, G♯'],
+    [4, 'E major', 'C♯ minor', 'F♯, C♯, G♯, D♯'],
+    [5, 'B major', 'G♯ minor', 'F♯, C♯, G♯, D♯, A♯'],
+    [6, 'F♯ major', 'D♯ minor', 'F♯, C♯, G♯, D♯, A♯, E♯'],
+    [7, 'C♯ major', 'A♯ minor', 'F♯, C♯, G♯, D♯, A♯, E♯, B♯'],
+  ];
+
+  function keySignatureCards() {
+    const recognition = KEY_SIGNATURES.flatMap(([count, major, minor, accidentals]) => [
+      {
+        q: musicToken('key', 'treble', count, 'major'),
+        a: `Major key: ${major}`,
+      },
+      {
+        q: musicToken('key', 'treble', count, 'minor'),
+        a: `Minor key: ${minor}`,
+      },
+    ]);
+    const construction = KEY_SIGNATURES.map(([count, major, , accidentals]) => ({
+      q: `Accidentals in ${major}?`,
+      a: `${major}: ${count === 0 ? 'none' : accidentals.replace(/, /g, ' ')}`,
+    }));
+    return recognition.concat(construction, [
+      { q: 'Sharps appear in what order?', a: 'F♯, C♯, G♯, D♯, A♯, E♯, B♯' },
+      { q: 'What is the order of flats in key signatures?', a: 'B♭, E♭, A♭, D♭, G♭, C♭, F♭' },
+      { q: 'Find a relative minor from its major key.', a: 'Down 3 semitones, or start on scale degree 6' },
+      { q: 'Neighboring keys on the circle of fifths?', a: 'They differ by 1 sharp or flat' },
+      { q: 'What does a natural sign cancel?', a: 'A sharp or flat for that pitch in the measure' },
+    ]);
+  }
+
+  const INTERVAL_TYPES = [
+    ['Perfect unison', 1, 0], ['Minor 2nd', 2, 1], ['Major 2nd', 2, 2],
+    ['Minor 3rd', 3, 3], ['Major 3rd', 3, 4], ['Perfect 4th', 4, 5],
+    ['Tritone', 4, 6], ['Perfect 5th', 5, 7], ['Minor 6th', 6, 8],
+    ['Major 6th', 6, 9],
+  ];
+
+  function naturalMidi(letter, octave) {
+    return (octave + 1) * 12 + MUSIC_SEMITONES[letter];
+  }
+
+  function intervalTarget(root, degree, semitones) {
+    const parsed = parseGeneratorPitch(root);
+    const rootLetterIndex = MUSIC_LETTERS.indexOf(parsed.letter);
+    const targetIndex = rootLetterIndex + degree - 1;
+    const targetLetter = MUSIC_LETTERS[targetIndex % 7];
+    const targetOctave = parsed.octave + Math.floor(targetIndex / 7);
+    const targetMidi = naturalMidi(parsed.letter, parsed.octave) + semitones;
+    const naturalTarget = naturalMidi(targetLetter, targetOctave);
+    const difference = targetMidi - naturalTarget;
+    const accidental = difference === 1 ? '#' : difference === -1 ? 'b' : '';
+    return `${targetLetter}${accidental}${targetOctave}`;
+  }
+
+  function intervalCards() {
+    return ['C4', 'D4', 'E4', 'F4', 'G4'].flatMap(root =>
+      INTERVAL_TYPES.map(([name, degree, semitones]) => {
+        const target = intervalTarget(root, degree, semitones);
+        return {
+          q: musicToken('interval', 'treble', root, target),
+          a: `${name} — ${pitchLabel(root)} to ${pitchLabel(target)}`,
+        };
+      })
+    );
+  }
+
+  const MUSIC_CHORDS = [
+    ['C major', 'C4,E4,G4'], ['D major', 'D4,F#4,A4'], ['E major', 'E4,G#4,B4'],
+    ['F major', 'F4,A4,C5'], ['G major', 'G4,B4,D5'], ['A major', 'A4,C#5,E5'],
+    ['B major', 'B4,D#5,F#5'], ['B♭ major', 'Bb3,D4,F4'], ['E♭ major', 'Eb4,G4,Bb4'],
+    ['A♭ major', 'Ab3,C4,Eb4'], ['C minor', 'C4,Eb4,G4'], ['D minor', 'D4,F4,A4'],
+    ['E minor', 'E4,G4,B4'], ['F minor', 'F4,Ab4,C5'], ['G minor', 'G4,Bb4,D5'],
+    ['A minor', 'A4,C5,E5'], ['B minor', 'B4,D5,F#5'], ['C diminished', 'C4,Eb4,Gb4'],
+    ['D diminished', 'D4,F4,Ab4'], ['E diminished', 'E4,G4,Bb4'],
+    ['F♯ diminished', 'F#4,A4,C5'], ['G♯ diminished', 'G#4,B4,D5'],
+    ['A diminished', 'A4,C5,Eb5'], ['B diminished', 'B4,D5,F5'],
+    ['C augmented', 'C4,E4,G#4'],
+  ];
+
+  const MUSIC_SYMBOLS = [
+    ['sharp', 'Sharp — raises a pitch by one semitone'],
+    ['flat', 'Flat — lowers a pitch by one semitone'],
+    ['natural', 'Natural — cancels a sharp or flat'],
+    ['double-sharp', 'Double sharp — raises a pitch by two semitones'],
+    ['double-flat', 'Double flat — lowers a pitch by two semitones'],
+    ['treble-clef', 'Treble clef — G clef'],
+    ['bass-clef', 'Bass clef — F clef'],
+    ['staff', 'Staff — five horizontal lines used for notation'],
+    ['barline', 'Barline — separates measures'],
+    ['double-barline', 'Double barline — section boundary or ending'],
+    ['repeat-start', 'Start repeat — begin the passage to be repeated'],
+    ['repeat-end', 'End repeat — return to the matching start repeat'],
+    ['fermata', 'Fermata — hold the note or rest longer'],
+    ['crescendo', 'Crescendo — gradually become louder'],
+    ['decrescendo', 'Decrescendo — gradually become softer'],
+    ['staccato', 'Staccato — play the note short and detached'],
+    ['accent', 'Accent — emphasize the note'],
+    ['tenuto', 'Tenuto — hold the note for its full value'],
+    ['tie', 'Tie — joins durations of same-pitch notes'],
+    ['slur', 'Slur — connects different pitches smoothly'],
+    ['piano', 'Piano (p) — soft'],
+    ['forte', 'Forte (f) — loud'],
+    ['mezzo-piano', 'Mezzo-piano (mp) — moderately soft'],
+    ['mezzo-forte', 'Mezzo-forte (mf) — moderately loud'],
+    ['fortissimo', 'Fortissimo (ff) — very loud'],
+  ];
+
+  function chordSymbolCards() {
+    return MUSIC_CHORDS.map(([name, pitches]) => ({
+      q: musicToken('chord', 'treble', pitches),
+      a: `${name} triad — ${pitches.split(',').map(pitchLabel).join(', ')}`,
+    })).concat(MUSIC_SYMBOLS.map(([symbol, answer]) => ({
+      q: musicToken('symbol', symbol),
+      a: answer,
+    })));
+  }
+
   const CATEGORIES = [
     { id: 'early-learning', name: 'Early Learning & Everyday Basics' },
     { id: 'math', name: 'Math' },
@@ -1200,6 +1491,14 @@
     pack('world-history', 'World History Milestones', 'history-arts-culture', ['world history', 'history milestones'], () => lessonCards('world-history')),
     pack('inventors-inventions', 'Inventors & Inventions', 'history-arts-culture', ['inventors', 'inventions'], () => lessonCards('inventors-inventions')),
     pack('art-music-terms', 'Art & Music Terms', 'history-arts-culture', ['art terms', 'music terms'], () => lessonCards('art-music-terms')),
+    pack('treble-clef-notes', 'Treble Clef Note Reading', 'history-arts-culture', ['sheet music', 'music notes', 'treble clef', 'sight reading'], () => clefNoteCards('treble', 'C4', 'C6')),
+    pack('bass-clef-notes', 'Bass Clef Note Reading', 'history-arts-culture', ['sheet music', 'music notes', 'bass clef', 'sight reading'], () => clefNoteCards('bass', 'C2', 'C4')),
+    pack('grand-staff-notes', 'Grand Staff Note Reading', 'history-arts-culture', ['grand staff', 'piano notes', 'sight reading'], grandStaffCards),
+    pack('rhythm-notes-rests', 'Rhythm Notes & Rests', 'history-arts-culture', ['rhythm', 'note values', 'rests', 'music counting'], rhythmCards),
+    pack('time-signatures', 'Time Signatures', 'history-arts-culture', ['meter', 'music time signatures'], timeSignatureCards),
+    pack('key-signatures', 'Key Signatures', 'history-arts-culture', ['keys', 'circle of fifths', 'sharps and flats'], keySignatureCards),
+    pack('musical-intervals', 'Musical Intervals', 'history-arts-culture', ['intervals', 'ear training', 'music theory'], intervalCards),
+    pack('chords-symbols', 'Chords & Musical Symbols', 'history-arts-culture', ['chords', 'triads', 'music symbols', 'dynamics', 'articulations'], chordSymbolCards),
 
     pack('spanish', 'Spanish Vocabulary', 'world-languages', ['spanish', 'español', 'espanol'], () => langQA('Spanish', SPANISH)),
     pack('french', 'French Vocabulary', 'world-languages', ['french', 'français', 'francais'], () => langQA('French', FRENCH)),

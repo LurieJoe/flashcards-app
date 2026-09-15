@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -1678,6 +1678,326 @@ function flagSpan(code) {
   return `<img class="card-flag card-flag-image" src="./flags/${region.toLowerCase()}.svg" ` +
     `width="160" height="120" alt="" aria-hidden="true">`;
 }
+
+const MUSIC_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const MUSIC_BASE_NOTES = {
+  treble: { letter: 'E', octave: 4 },
+  bass: { letter: 'G', octave: 2 },
+};
+const MUSIC_RHYTHM_NAMES = {
+  w: 'whole note', h: 'half note', q: 'quarter note', e: 'eighth note', s: 'sixteenth note',
+  wr: 'whole rest', hr: 'half rest', qr: 'quarter rest', er: 'eighth rest', sr: 'sixteenth rest',
+};
+
+function parseMusicPitch(value) {
+  const match = /^([A-Ga-g])([#bn]?)([0-8])$/.exec(String(value || '').trim());
+  if (!match) return null;
+  return { letter: match[1].toUpperCase(), accidental: match[2], octave: Number(match[3]) };
+}
+
+function musicDiatonicIndex(pitch) {
+  return pitch.octave * 7 + MUSIC_LETTERS.indexOf(pitch.letter);
+}
+
+function musicAccidentalGlyph(accidental) {
+  return accidental === '#' ? '♯' : accidental === 'b' ? '♭' : accidental === 'n' ? '♮' : '';
+}
+
+function musicPitchLabel(pitch) {
+  return `${pitch.letter}${musicAccidentalGlyph(pitch.accidental)}${pitch.octave}`;
+}
+
+function musicClefGlyph(clef) {
+  return clef === 'bass' ? '𝄢' : '𝄞';
+}
+
+function musicStaffPosition(pitch, clef) {
+  const base = MUSIC_BASE_NOTES[clef];
+  if (!base) return 'unknown staff position';
+  const offset = musicDiatonicIndex(pitch) -
+    (base.octave * 7 + MUSIC_LETTERS.indexOf(base.letter));
+  let position;
+  if (offset >= 0 && offset <= 8) {
+    position = offset % 2 === 0
+      ? `line ${Math.floor(offset / 2) + 1} from the bottom`
+      : `space ${Math.floor(offset / 2) + 1} from the bottom`;
+  } else if (offset < 0) {
+    const distance = -offset;
+    position = distance % 2 === 0
+      ? `ledger line ${distance / 2} below the staff`
+      : distance === 1 ? 'the space immediately below the staff'
+        : `the space below ledger line ${Math.floor(distance / 2)} below the staff`;
+  } else {
+    const distance = offset - 8;
+    position = distance % 2 === 0
+      ? `ledger line ${distance / 2} above the staff`
+      : distance === 1 ? 'the space immediately above the staff'
+        : `the space above ledger line ${Math.floor(distance / 2)} above the staff`;
+  }
+  const accidental = pitch.accidental
+    ? ` with a ${pitch.accidental === '#' ? 'sharp' : pitch.accidental === 'b' ? 'flat' : 'natural'} sign`
+    : '';
+  return `${position}${accidental}`;
+}
+
+function musicStaffLines(top, spacing, left = 28, right = 174) {
+  return Array.from({ length: 5 }, (_, index) => {
+    const y = top + index * spacing;
+    return `<line x1="${left}" y1="${y}" x2="${right}" y2="${y}"/>`;
+  }).join('');
+}
+
+function musicLedgerLines(y, top, bottom, spacing, x) {
+  let markup = '';
+  if (y > bottom) {
+    for (let lineY = bottom + spacing; lineY <= y + 0.5; lineY += spacing) {
+      markup += `<line x1="${x - 13}" y1="${lineY}" x2="${x + 13}" y2="${lineY}"/>`;
+    }
+  } else if (y < top) {
+    for (let lineY = top - spacing; lineY >= y - 0.5; lineY -= spacing) {
+      markup += `<line x1="${x - 13}" y1="${lineY}" x2="${x + 13}" y2="${lineY}"/>`;
+    }
+  }
+  return markup;
+}
+
+function musicPitchY(pitch, clef, bottom, halfStep) {
+  const base = MUSIC_BASE_NOTES[clef];
+  const offset = musicDiatonicIndex(pitch) -
+    (base.octave * 7 + MUSIC_LETTERS.indexOf(base.letter));
+  return bottom - offset * halfStep;
+}
+
+function musicNoteMarkup(pitch, clef, x, top, bottom, spacing, stem = true) {
+  const y = musicPitchY(pitch, clef, bottom, spacing / 2);
+  const ledger = musicLedgerLines(y, top, bottom, spacing, x);
+  const accidental = musicAccidentalGlyph(pitch.accidental);
+  const accidentalMarkup = accidental
+    ? `<text class="music-accidental" x="${x - 24}" y="${y + 7}">${accidental}</text>`
+    : '';
+  const stemMarkup = !stem ? '' : y >= (top + bottom) / 2
+    ? `<line x1="${x + 7}" y1="${y}" x2="${x + 7}" y2="${y - 34}"/>`
+    : `<line x1="${x - 7}" y1="${y}" x2="${x - 7}" y2="${y + 34}"/>`;
+  return `${ledger}${accidentalMarkup}<ellipse class="music-notehead" cx="${x}" cy="${y}" rx="8" ry="5" transform="rotate(-18 ${x} ${y})"/>${stemMarkup}`;
+}
+
+function musicStaffSvg(clef, pitches, kind = 'note') {
+  if (!['treble', 'bass'].includes(clef) || !pitches.length || pitches.some(pitch => !pitch)) return '';
+  const positions = pitches.length === 1 ? [112]
+    : pitches.length === 2 ? [96, 136]
+      : pitches.map(() => 118);
+  const notes = pitches.map((pitch, index) =>
+    musicNoteMarkup(pitch, clef, positions[index], 32, 80, 12)).join('');
+  return `<svg class="card-music card-music-${kind}" viewBox="0 0 190 112" aria-hidden="true" focusable="false">` +
+    `<g class="music-lines">${musicStaffLines(32, 12)}</g>` +
+    `<text class="music-clef" x="8" y="${clef === 'bass' ? 72 : 76}">${musicClefGlyph(clef)}</text>` +
+    `<g class="music-notes">${notes}</g></svg>`;
+}
+
+function musicGrandStaffSvg(clef, pitch) {
+  if (!['treble', 'bass'].includes(clef) || !pitch) return '';
+  const top = clef === 'treble' ? 35 : 95;
+  const bottom = clef === 'treble' ? 75 : 135;
+  const note = musicNoteMarkup(pitch, clef, 132, top, bottom, 10);
+  return `<svg class="card-music card-music-grand" viewBox="0 0 200 170" aria-hidden="true" focusable="false">` +
+    `<g class="music-lines">${musicStaffLines(35, 10, 36, 184)}${musicStaffLines(95, 10, 36, 184)}` +
+    `<path d="M28 35 Q18 35 18 46 L18 124 Q18 135 28 135"/></g>` +
+    `<text class="music-clef" x="36" y="76">𝄞</text><text class="music-clef" x="38" y="133">𝄢</text>` +
+    `<g class="music-notes">${note}</g></svg>`;
+}
+
+function musicKeySignatureSvg(clef, count, mode) {
+  if (!['treble', 'bass'].includes(clef) || !Number.isInteger(count) || Math.abs(count) > 7) return '';
+  const sharpPitches = clef === 'treble'
+    ? ['F5', 'C5', 'G5', 'D5', 'A4', 'E5', 'B4']
+    : ['F3', 'C3', 'G3', 'D3', 'A2', 'E3', 'B2'];
+  const flatPitches = clef === 'treble'
+    ? ['B4', 'E5', 'A4', 'D5', 'G4', 'C5', 'F4']
+    : ['B2', 'E3', 'A2', 'D3', 'G2', 'C3', 'F2'];
+  const pitches = (count > 0 ? sharpPitches : flatPitches).slice(0, Math.abs(count));
+  const glyph = count > 0 ? '♯' : '♭';
+  const accidentals = pitches.map((value, index) => {
+    const pitch = parseMusicPitch(value);
+    const y = musicPitchY(pitch, clef, 80, 6);
+    return `<text class="music-key-accidental" x="${76 + index * 13}" y="${y + 7}">${glyph}</text>`;
+  }).join('');
+  const prompt = ['major', 'minor'].includes(mode)
+    ? `<text class="music-key-prompt" x="95" y="16">${mode.toUpperCase()} KEY?</text>`
+    : '';
+  return `<svg class="card-music card-music-key" viewBox="0 0 190 112" aria-hidden="true" focusable="false">` +
+    prompt +
+    `<g class="music-lines">${musicStaffLines(32, 12)}<line x1="166" y1="32" x2="166" y2="80"/></g>` +
+    `<text class="music-clef" x="8" y="${clef === 'bass' ? 72 : 76}">${musicClefGlyph(clef)}</text>` +
+    accidentals + `</svg>`;
+}
+
+function musicTimeSignatureSvg(parts) {
+  const first = parts[0];
+  const special = first === 'common' || first === 'cut';
+  let signature;
+  if (special) {
+    signature = first === 'common'
+      ? '<text class="music-common-time" x="104" y="72">C</text>'
+      : '<text class="music-common-time" x="104" y="72">C</text><line x1="119" y1="38" x2="119" y2="82"/>';
+  } else {
+    const top = Number(first);
+    const bottom = Number(parts[1]);
+    if (!Number.isInteger(top) || ![2, 4, 8].includes(bottom) || top < 1 || top > 12) return '';
+    signature = `<text class="music-time-number" x="108" y="56">${top}</text>` +
+      `<text class="music-time-number" x="108" y="82">${bottom}</text>`;
+  }
+  return `<svg class="card-music card-music-time" viewBox="0 0 190 112" aria-hidden="true" focusable="false">` +
+    `<g class="music-lines">${musicStaffLines(32, 12)}</g><text class="music-clef" x="8" y="76">𝄞</text>` +
+    signature + `</svg>`;
+}
+
+function musicRhythmMarkup(code, x) {
+  if (!MUSIC_RHYTHM_NAMES[code]) return '';
+  const note = !code.endsWith('r');
+  if (note) {
+    const filled = !['w', 'h'].includes(code);
+    const head = `<ellipse class="music-rhythm-head${filled ? ' filled' : ''}" cx="${x}" cy="62" rx="8" ry="5" transform="rotate(-18 ${x} 62)"/>`;
+    if (code === 'w') return head;
+    let markup = `${head}<line x1="${x + 7}" y1="62" x2="${x + 7}" y2="28"/>`;
+    if (code === 'e' || code === 's') {
+      markup += `<path d="M${x + 7} 28 Q${x + 24} 34 ${x + 16} 47"/>`;
+    }
+    if (code === 's') {
+      markup += `<path d="M${x + 7} 38 Q${x + 24} 44 ${x + 16} 57"/>`;
+    }
+    return markup;
+  }
+  if (code === 'wr') return `<rect class="music-rest" x="${x - 8}" y="44" width="16" height="6"/>`;
+  if (code === 'hr') return `<rect class="music-rest" x="${x - 8}" y="50" width="16" height="6"/>`;
+  if (code === 'qr') return `<path class="music-rest-path" d="M${x + 4} 30 L${x - 5} 45 L${x + 5} 54 L${x - 3} 70 L${x + 8} 79"/>`;
+  const secondFlag = code === 'sr'
+    ? `<path class="music-rest-path" d="M${x} 49 Q${x + 16} 43 ${x + 9} 58"/>`
+    : '';
+  return `<line class="music-rest-path" x1="${x}" y1="30" x2="${x}" y2="73"/>` +
+    `<path class="music-rest-path" d="M${x} 37 Q${x + 16} 31 ${x + 9} 47"/>${secondFlag}`;
+}
+
+function musicRhythmSvg(pattern) {
+  const codes = String(pattern || '').split('+');
+  if (!codes.length || codes.length > 4 || codes.some(code => !MUSIC_RHYTHM_NAMES[code])) return '';
+  const positions = codes.length === 1 ? [104]
+    : codes.map((_, index) => 64 + index * (80 / (codes.length - 1)));
+  const symbols = codes.map((code, index) => musicRhythmMarkup(code, positions[index])).join('');
+  return `<svg class="card-music card-music-rhythm" viewBox="0 0 190 104" aria-hidden="true" focusable="false">` +
+    `<g class="music-lines">${musicStaffLines(32, 12)}</g><g class="music-notes">${symbols}</g></svg>`;
+}
+
+function musicSymbolSvg(symbol) {
+  const note = '<ellipse class="music-notehead" cx="94" cy="64" rx="8" ry="5" transform="rotate(-18 94 64)"/><line x1="101" y1="64" x2="101" y2="30"/>';
+  const textSymbols = {
+    sharp: '♯', flat: '♭', natural: '♮', 'double-sharp': '𝄪', 'double-flat': '♭♭',
+    'treble-clef': '𝄞', 'bass-clef': '𝄢', piano: 'p', forte: 'f',
+    'mezzo-piano': 'mp', 'mezzo-forte': 'mf', fortissimo: 'ff',
+  };
+  let markup = '';
+  if (textSymbols[symbol]) {
+    markup = `<text class="music-symbol-text music-symbol-${symbol}" x="95" y="76">${textSymbols[symbol]}</text>`;
+  } else if (symbol === 'staff') {
+    markup = `<g class="music-lines">${musicStaffLines(30, 12, 24, 166)}</g>`;
+  } else if (symbol === 'barline' || symbol === 'double-barline') {
+    markup = `<g class="music-lines">${musicStaffLines(30, 12, 24, 166)}` +
+      `<line x1="96" y1="30" x2="96" y2="78"/>` +
+      (symbol === 'double-barline' ? '<line x1="104" y1="30" x2="104" y2="78"/>' : '') + '</g>';
+  } else if (symbol === 'repeat-start' || symbol === 'repeat-end') {
+    const left = symbol === 'repeat-start' ? 82 : 102;
+    const right = symbol === 'repeat-start' ? 90 : 94;
+    markup = `<g class="music-lines">${musicStaffLines(30, 12, 24, 166)}` +
+      `<line x1="${left}" y1="30" x2="${left}" y2="78"/><line class="music-heavy-line" x1="${right}" y1="30" x2="${right}" y2="78"/>` +
+      `<circle class="music-dot" cx="${symbol === 'repeat-start' ? 102 : 80}" cy="48" r="3"/>` +
+      `<circle class="music-dot" cx="${symbol === 'repeat-start' ? 102 : 80}" cy="60" r="3"/></g>`;
+  } else if (symbol === 'fermata') {
+    markup = `${note}<path class="music-symbol-path" d="M67 49 Q94 18 121 49"/><circle class="music-dot" cx="94" cy="43" r="4"/>`;
+  } else if (symbol === 'crescendo' || symbol === 'decrescendo') {
+    markup = symbol === 'crescendo'
+      ? '<path class="music-symbol-path" d="M50 54 L140 30 M50 54 L140 78"/>'
+      : '<path class="music-symbol-path" d="M50 30 L140 54 M50 78 L140 54"/>';
+  } else if (['staccato', 'accent', 'tenuto'].includes(symbol)) {
+    const articulation = symbol === 'staccato'
+      ? '<circle class="music-dot" cx="94" cy="82" r="4"/>'
+      : symbol === 'accent'
+        ? '<path class="music-symbol-path" d="M76 80 L112 88 L76 96"/>'
+        : '<line class="music-symbol-path" x1="77" y1="86" x2="111" y2="86"/>';
+    markup = note + articulation;
+  } else if (symbol === 'tie' || symbol === 'slur') {
+    markup = `<ellipse class="music-notehead" cx="68" cy="64" rx="8" ry="5"/><ellipse class="music-notehead" cx="122" cy="${symbol === 'tie' ? 64 : 48}" rx="8" ry="5"/>` +
+      `<path class="music-symbol-path" d="${symbol === 'tie' ? 'M68 77 Q95 94 122 77' : 'M68 77 Q95 96 122 61'}"/>`;
+  }
+  if (!markup) return '';
+  return `<svg class="card-music card-music-symbol" viewBox="0 0 190 110" aria-hidden="true" focusable="false">${markup}</svg>`;
+}
+
+function musicAccessibleText(kind, parts) {
+  if (kind === 'note') {
+    const clef = parts[0];
+    const pitch = parseMusicPitch(parts[1]);
+    return pitch && MUSIC_BASE_NOTES[clef]
+      ? `${clef} clef note on ${musicStaffPosition(pitch, clef)}`
+      : 'Music note identification';
+  }
+  if (kind === 'grand') {
+    const clef = parts[0];
+    const pitch = parseMusicPitch(parts[1]);
+    return pitch && MUSIC_BASE_NOTES[clef]
+      ? `Grand staff, ${clef} clef note on ${musicStaffPosition(pitch, clef)}`
+      : 'Grand staff note identification';
+  }
+  if (kind === 'interval') {
+    const clef = parts[0];
+    const first = parseMusicPitch(parts[1]);
+    const second = parseMusicPitch(parts[2]);
+    return first && second && MUSIC_BASE_NOTES[clef]
+      ? `${clef} clef interval from ${musicStaffPosition(first, clef)} to ${musicStaffPosition(second, clef)}`
+      : 'Musical interval identification';
+  }
+  if (kind === 'chord') {
+    const clef = parts[0];
+    const pitches = String(parts[1] || '').split(',').map(parseMusicPitch);
+    return pitches.length && pitches.every(Boolean) && MUSIC_BASE_NOTES[clef]
+      ? `${clef} clef chord with notes on ${pitches.map(pitch => musicStaffPosition(pitch, clef)).join(', ')}`
+      : 'Chord identification';
+  }
+  if (kind === 'key') {
+    const count = Number(parts[1]);
+    const mode = ['major', 'minor'].includes(parts[2]) ? `${parts[2]} ` : '';
+    return Number.isInteger(count)
+      ? `${mode}key signature with ${count === 0 ? 'no sharps or flats' : `${Math.abs(count)} ${count > 0 ? 'sharps' : 'flats'}`}`
+      : 'Key signature identification';
+  }
+  if (kind === 'time') {
+    if (parts[0] === 'common') return 'Common-time symbol';
+    if (parts[0] === 'cut') return 'Cut-time symbol';
+    return `Time signature with ${parts[0]} above ${parts[1]}`;
+  }
+  if (kind === 'rhythm') {
+    const names = String(parts[0] || '').split('+').map(code => MUSIC_RHYTHM_NAMES[code]).filter(Boolean);
+    return names.length ? `Rhythm notation: ${names.join(' followed by ')}` : 'Rhythm identification';
+  }
+  if (kind === 'symbol') return `Musical symbol: ${String(parts[0] || '').replace(/-/g, ' ')}`;
+  return 'Musical notation';
+}
+
+function musicSVG(kind, parts) {
+  if (kind === 'note') return musicStaffSvg(parts[0], [parseMusicPitch(parts[1])], 'note');
+  if (kind === 'grand') return musicGrandStaffSvg(parts[0], parseMusicPitch(parts[1]));
+  if (kind === 'interval') {
+    return musicStaffSvg(parts[0], [parseMusicPitch(parts[1]), parseMusicPitch(parts[2])], 'interval');
+  }
+  if (kind === 'chord') {
+    const pitches = String(parts[1] || '').split(',').map(parseMusicPitch);
+    return musicStaffSvg(parts[0], pitches, 'chord');
+  }
+  if (kind === 'key') return musicKeySignatureSvg(parts[0], Number(parts[1]), parts[2]);
+  if (kind === 'time') return musicTimeSignatureSvg(parts);
+  if (kind === 'rhythm') return musicRhythmSvg(parts[0]);
+  if (kind === 'symbol') return musicSymbolSvg(parts[0]);
+  return '';
+}
+
 function inlineMd(s) {
   return s
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -1694,6 +2014,9 @@ function renderToken(inner) {
   }
   if (type === 'flag') {
     return flagSpan(head[1] || '');
+  }
+  if (type === 'music') {
+    return musicSVG(head[1] || '', segs.slice(1)) || escapeHtml('{{' + inner + '}}');
   }
   if (type === 'c' || type === 'color') {
     const color = safeColor(head[1] || '');
@@ -2203,6 +2526,10 @@ function choiceAnswerItems(card) {
 function accessibleRichText(text) {
   return String(text ?? '')
     .replace(/\{\{flag:[A-Z]{2}\}\}/gi, 'Flag identification question')
+    .replace(/\{\{music:([^}]*)\}\}/gi, (_, token) => {
+      const segments = token.split('|');
+      return musicAccessibleText(segments[0].trim().toLowerCase(), segments.slice(1));
+    })
     .replace(/\{\{shape:([^|}]+)\|([^|}]+)(?:\|[^}]*)?\}\}/gi, (_, shape, color) =>
       `${color} ${shape}`)
     .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
@@ -2675,6 +3002,12 @@ const TIPS = [
   { ico: '🕢', view: 'edit',
     title: 'Practice telling time',
     text: 'Choose “Telling Time with Analog Clocks” to practice reading clock emojis, plus questions about times one hour or 30 minutes later.' },
+  { ico: '🎼', view: 'edit',
+    title: 'Practice reading music',
+    text: 'The Music & Sight Reading collection includes treble and bass notes, grand staff, rhythm, time and key signatures, intervals, chords, and musical symbols — all rendered offline.' },
+  { ico: '🎵', view: 'study',
+    title: 'Build sight-reading skills step by step',
+    text: 'Start with a clef-note deck, then move to grand staff, rhythm, signatures, intervals, and chords. Use Matching Pairs for quick recognition and Multiple Choice for focused practice.' },
   { ico: '💾', view: 'edit',
     title: 'Back up or move everything',
     text: 'On the Import tab, use “Create Backup” to save every profile, deck, preference, flag, and study position. It works offline, and the file can be kept in cloud storage for restoration on another device.' },
@@ -4011,7 +4344,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v65');
+      waitingWorker.postMessage('activate-v66');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }

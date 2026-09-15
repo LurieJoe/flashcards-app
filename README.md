@@ -26,6 +26,10 @@ Three tabs — **Home**, **Study**, and **Import**:
   Earth & Space Science, Language Arts, Geography & Civics, History, Arts & Culture,
   and World Languages. The catalog includes everything from *Animals*, *Fractions*,
   and *Human Body* to *World Flags*, *US Presidents*, and seven language decks.
+- **Music & Sight Reading:** eight compact visual decks cover treble clef, bass clef,
+  grand staff, rhythm notes and rests, time signatures, key signatures, intervals,
+  chords, and musical symbols. Staff notation is generated as accessible inline SVG,
+  so no image downloads, music font package, or online notation service is required.
 - **Streamlined Import tab:** filter categorized built-in decks, import a supported
   file, export the selected deck, or expand **Create or edit cards** only when you need
   the bulk card editor and its formatting instructions.

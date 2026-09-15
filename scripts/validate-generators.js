@@ -109,6 +109,14 @@ const EXPECTED_PACKS_BY_CATEGORY = {
     ['world-history', 'World History Milestones'],
     ['inventors-inventions', 'Inventors & Inventions'],
     ['art-music-terms', 'Art & Music Terms'],
+    ['treble-clef-notes', 'Treble Clef Note Reading'],
+    ['bass-clef-notes', 'Bass Clef Note Reading'],
+    ['grand-staff-notes', 'Grand Staff Note Reading'],
+    ['rhythm-notes-rests', 'Rhythm Notes & Rests'],
+    ['time-signatures', 'Time Signatures'],
+    ['key-signatures', 'Key Signatures'],
+    ['musical-intervals', 'Musical Intervals'],
+    ['chords-symbols', 'Chords & Musical Symbols'],
   ],
   'world-languages': [
     ['spanish', 'Spanish Vocabulary'],
@@ -126,16 +134,22 @@ const ORIGINAL_PACK_IDS = [
   'multiplication', 'elements', 'spanish', 'french', 'portuguese', 'planets',
   'us-civics', 'colors', 'shapes',
 ];
+const MUSIC_PACK_IDS = [
+  'treble-clef-notes', 'bass-clef-notes', 'grand-staff-notes', 'rhythm-notes-rests',
+  'time-signatures', 'key-signatures', 'musical-intervals', 'chords-symbols',
+];
 const expectedPacks = Object.entries(EXPECTED_PACKS_BY_CATEGORY)
   .flatMap(([category, entries]) => entries.map(([id, name]) => ({ id, name, category })));
-const addedPackIds = expectedPacks.map(pack => pack.id).filter(id => !ORIGINAL_PACK_IDS.includes(id));
+const priorExpansionPackIds = expectedPacks.map(pack => pack.id)
+  .filter(id => !ORIGINAL_PACK_IDS.includes(id) && !MUSIC_PACK_IDS.includes(id));
 
 assert(Array.isArray(categories), 'TOPIC_CATEGORIES must be an array.');
 assert(categories.length === 8, `Expected 8 categories; found ${categories.length}.`);
 assert(Array.isArray(packs), 'TOPIC_PACKS must be an array.');
-assert(packs.length === 57, `Expected 57 packs; found ${packs.length}.`);
+assert(packs.length === 65, `Expected 65 packs; found ${packs.length}.`);
 assert(ORIGINAL_PACK_IDS.length === 14, 'The pre-fc374eb pack list must contain 14 decks.');
-assert(addedPackIds.length === 43, 'The fc374eb expansion must contain 43 additional decks.');
+assert(priorExpansionPackIds.length === 43, 'The fc374eb expansion must contain 43 additional decks.');
+assert(MUSIC_PACK_IDS.length === 8, 'The music collection must contain 8 decks.');
 
 const categoryIds = new Set();
 const categoryNames = new Set();
@@ -205,8 +219,9 @@ assert(packIds.size === expectedPacks.length, 'The built-in pack id set changed.
 
 for (const category of categories) {
   const count = categoryCounts.get(category.id);
-  assert(count === (category.id === 'early-learning' ? 8 : 7),
-    `${category.name} has ${count} packs; expected ${category.id === 'early-learning' ? 8 : 7}.`);
+  const expectedCount = EXPECTED_PACKS_BY_CATEGORY[category.id].length;
+  assert(count === expectedCount,
+    `${category.name} has ${count} packs; expected ${expectedCount}.`);
 }
 
 function getCards(id) {
@@ -216,8 +231,28 @@ function getCards(id) {
 }
 
 console.log(`Validated ${categories.length} categories and ${packs.length} packs.`);
-console.log(`Confirmed the original ${ORIGINAL_PACK_IDS.length} packs and the ${addedPackIds.length} packs added in fc374eb.`);
+console.log(`Confirmed the original ${ORIGINAL_PACK_IDS.length} packs, the ${priorExpansionPackIds.length} packs added in fc374eb, and ${MUSIC_PACK_IDS.length} music decks.`);
 console.log('Every pack has at least 50 nonempty cards, unique normalized questions and Q+A pairs, and valid metadata.');
+
+for (const id of MUSIC_PACK_IDS) {
+  const cards = getCards(id);
+  assert(cards.length === 50, `${id} should contain exactly 50 cards.`);
+  assert(cards.some(card => /\{\{music:[^}]+\}\}/.test(card.q)),
+    `${id} should contain rendered music notation.`);
+  assert(cards.every(card => !/https?:|<img|data:/i.test(card.q)),
+    `${id} must remain offline and avoid external notation assets.`);
+  assert(new Set(cards.map(card => normalize(card.a))).size === cards.length,
+    `${id} needs unique answers so all cards can be scheduled in Matching Pairs.`);
+}
+
+const grandStaffPitches = getCards('grand-staff-notes').map((card, index) => {
+  const match = /\{\{music:grand\|(?:treble|bass)\|([^}]+)\}\}/.exec(card.q);
+  assert(match, `grand-staff-notes card ${index + 1} needs a valid grand staff token.`);
+  return normalize(match[1]);
+});
+assert(new Set(grandStaffPitches).size === grandStaffPitches.length,
+  'Grand Staff Note Reading must not render the same pitch from two clef ranges.');
+console.log('Validated 400 compact music cards with unique answers and offline notation tokens.');
 
 const clockCards = getCards('telling-time');
 const clockEmoji = new Set(
