@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -75,6 +75,11 @@ const PROFILE_SUFFIXES = [
   'data.v2', 'studySession.v1', 'pref.sound', 'pref.timer', 'pref.font',
   'pref.highContrast', 'theme', 'accent', 'samplesSeeded',
 ];
+const PROFILE_STORAGE_SUFFIXES = [
+  ...PROFILE_SUFFIXES,
+  'pref.tipsStartup', 'pref.tipsNavigate', 'pref.tipIndex',
+];
+const PROFILE_STORAGE_SUFFIX_SET = new Set(PROFILE_STORAGE_SUFFIXES);
 const LEGACY_GLOBAL = {
   'data.v2': 'flashcards.data.v2',
   'pref.sound': 'flashcards.pref.sound',
@@ -103,10 +108,12 @@ function loadProfiles() {
     const pid = uid();
     profiles = { profiles: [{ id: pid, name: 'Me', color: PROFILE_COLORS[0] }], activeId: pid };
     for (const suf of PROFILE_SUFFIXES) {
-      const legacy = localStorage.getItem(LEGACY_GLOBAL[suf]);
+      const legacyKey = LEGACY_GLOBAL[suf];
+      if (!legacyKey) continue;
+      const legacy = localStorage.getItem(legacyKey);
       if (legacy !== null) {
         localStorage.setItem(profileKey(pid, suf), legacy);
-        localStorage.removeItem(LEGACY_GLOBAL[suf]);
+        localStorage.removeItem(legacyKey);
       }
     }
     saveProfiles();
@@ -120,9 +127,18 @@ function nextProfileColor() {
   const used = new Set(profiles.profiles.map(p => p.color));
   return PROFILE_COLORS.find(c => !used.has(c)) || PROFILE_COLORS[profiles.profiles.length % PROFILE_COLORS.length];
 }
-function deleteProfileData(pid) { PROFILE_SUFFIXES.forEach(s => localStorage.removeItem(profileKey(pid, s))); }
+function deleteProfileData(pid) {
+  const prefix = `flashcards.p.${pid}.`;
+  const keys = [];
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(prefix)) keys.push(key);
+  }
+  keys.forEach(key => localStorage.removeItem(key));
+}
 
 function load() {
+  let migratedLegacyCards = false;
   try {
     const raw = localStorage.getItem(K('data.v2'));
     if (raw) {
@@ -132,6 +148,7 @@ function load() {
       const cards = legacy ? JSON.parse(legacy) : [];
       state = { decks: [{ id: uid(), name: 'My cards', cards: Array.isArray(cards) ? cards : [] }], activeId: null };
       state.activeId = state.decks[0].id;
+      migratedLegacyCards = legacy !== null;
     }
   } catch {
     state = { decks: [], activeId: null };
@@ -143,6 +160,10 @@ function load() {
     state.activeId = d.id;
   }
   if (!state.decks.some(d => d.id === state.activeId)) state.activeId = state.decks[0].id;
+  if (migratedLegacyCards) {
+    save();
+    localStorage.removeItem(LEGACY_KEY);
+  }
 }
 
 function ensureCardIds() {
@@ -304,6 +325,10 @@ function parseLabeled(lines, labelQ, labelA) {
 /* ============================================================
    .docx importer (offline, no libraries)
 ============================================================ */
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+const MAX_DOCX_XML_BYTES = 20 * 1024 * 1024;
+const MAX_IMPORT_CARDS = 10000;
+
 async function importDocx(file) {
   const buf = new Uint8Array(await file.arrayBuffer());
   const xml = await extractDocumentXml(buf);
@@ -313,6 +338,7 @@ async function importDocx(file) {
 }
 
 async function extractDocumentXml(buf) {
+  if (buf.length < 22) throw new Error('Not a valid .docx (file is incomplete).');
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   let eocd = -1;
   for (let i = buf.length - 22; i >= 0; i--) {
@@ -327,32 +353,73 @@ async function extractDocumentXml(buf) {
     if (view.getUint32(p, true) !== 0x02014b50) break;
     const method = view.getUint16(p + 10, true);
     const compSize = view.getUint32(p + 20, true);
+    const uncompSize = view.getUint32(p + 24, true);
     const nameLen = view.getUint16(p + 28, true);
     const extraLen = view.getUint16(p + 30, true);
     const commentLen = view.getUint16(p + 32, true);
     const localOff = view.getUint32(p + 42, true);
     const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
-    if (name === 'word/document.xml') target = { method, compSize, localOff };
+    if (name === 'word/document.xml') target = { method, compSize, uncompSize, localOff };
     p += 46 + nameLen + extraLen + commentLen;
   }
   if (!target) throw new Error('Could not find document text inside the .docx.');
+  if (target.uncompSize > MAX_DOCX_XML_BYTES) {
+    throw new Error('This Word document expands beyond the 20 MB import limit.');
+  }
 
   const lo = target.localOff;
   if (view.getUint32(lo, true) !== 0x04034b50) throw new Error('Corrupt .docx (bad local header).');
   const nameLen = view.getUint16(lo + 26, true);
   const extraLen = view.getUint16(lo + 28, true);
   const dataStart = lo + 30 + nameLen + extraLen;
+  if (dataStart + target.compSize > buf.length) throw new Error('Corrupt .docx (document data is incomplete).');
   const data = buf.subarray(dataStart, dataStart + target.compSize);
 
-  if (target.method === 0) return new TextDecoder('utf-8').decode(data);
+  if (target.method === 0) {
+    if (data.length > MAX_DOCX_XML_BYTES) {
+      throw new Error('This Word document expands beyond the 20 MB import limit.');
+    }
+    return new TextDecoder('utf-8').decode(data);
+  }
   if (target.method !== 8) throw new Error('Unsupported .docx compression.');
   if (typeof DecompressionStream === 'undefined') {
     throw new Error('This browser can’t unzip .docx. Update iOS/Safari, or paste the text instead.');
   }
   const ds = new DecompressionStream('deflate-raw');
   const stream = new Response(data).body.pipeThrough(ds);
-  const out = new Uint8Array(await new Response(stream).arrayBuffer());
+  const out = await readStreamWithLimit(
+    stream,
+    MAX_DOCX_XML_BYTES,
+    'This Word document expands beyond the 20 MB import limit.'
+  );
   return new TextDecoder('utf-8').decode(out);
+}
+
+async function readStreamWithLimit(stream, maxBytes, message) {
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error(message);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
 }
 
 function nodeText(node) {
@@ -430,8 +497,11 @@ function extractFromDocxXml(xml) {
 ============================================================ */
 async function importFile(file) {
   const name = file.name.toLowerCase();
-  if (name.endsWith('.docx')) return importDocx(file);
-  if (name.endsWith('.json')) {
+  if (file.size > MAX_IMPORT_BYTES) throw new Error('This import file is larger than 10 MB.');
+  let result;
+  if (name.endsWith('.docx')) {
+    result = await importDocx(file);
+  } else if (name.endsWith('.json')) {
     const data = JSON.parse(await file.text());
     let cards = [];
     const arr = Array.isArray(data) ? data : data.cards;
@@ -444,12 +514,18 @@ async function importFile(file) {
                                               })
                  .filter(c => c.q && c.a);
     }
-    return { cards, method: 'json', suggestedName: data.name };
+    result = { cards, method: 'json', suggestedName: data.name };
+  } else {
+    const text = await file.text();
+    const parsed = parseInput(text);
+    result = parsed.length
+      ? { cards: parsed.filter(p => !isHeaderPair(p)), method: 'text' }
+      : cardsFromLines(text.split(/\r?\n/));
   }
-  const text = await file.text();
-  const parsed = parseInput(text);
-  if (parsed.length) return { cards: parsed.filter(p => !isHeaderPair(p)), method: 'text' };
-  return cardsFromLines(text.split(/\r?\n/));
+  if (result.cards.length > MAX_IMPORT_CARDS) {
+    throw new Error(`This file contains more than ${MAX_IMPORT_CARDS.toLocaleString()} cards.`);
+  }
+  return result;
 }
 
 function baseName(fileName) { return fileName.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim(); }
@@ -2766,9 +2842,9 @@ function initTips() {
 ============================================================ */
 const FAQ = [
   ['Where is my data stored?',
-   'Everything lives on your device in the browser\u2019s local storage. Your decks, cards, flags, and settings never leave your phone.'],
+   'Your decks, cards, flags, profiles, and settings live in this browser\u2019s local storage. They are not uploaded by the app. Copies leave the browser only when you choose to export, share, or back them up, and information you submit through an external service such as GitHub is handled by that service.'],
   ['How do profiles work?',
-   'Tap the colored avatar in the top-right to add a profile or switch between them. Each profile has its own decks, theme, accent color, font size, and preferences \u2014 handy when several people share one device. Profiles live only on this device: there are no accounts, logins, or passwords, and switching never sends anything anywhere. Your existing cards automatically became the first profile, \u201cMe\u201d.'],
+   'Tap the colored avatar in the top-right to add a profile or switch between them. Each profile has its own decks, theme, accent color, font size, and preferences. Profiles are organizational spaces, not private accounts: there are no passwords or access controls, so anyone using the same browser can switch profiles and read their decks. Your existing cards automatically became the first profile, \u201cMe\u201d.'],
   ['How do tips work?',
    'Tap the lightbulb next to the \u2699 gear to see all the tips. When \u201cShow tips at startup\u201d is on, a single quick tip \u2014 a different one each time \u2014 pops up when you open the app; you can turn it off from that popup, the Home screen, or Settings. Turn on \u201cShow tips as you navigate\u201d in Settings for short, in-context reminders as you move between tabs.'],
   ['Does it work offline?',
@@ -2776,7 +2852,7 @@ const FAQ = [
   ['How do I import questions?',
    'Go to the Import tab and tap \u201cImport file\u201d. You can load a Word .docx, a .csv/.txt list, or a deck .json exported from this app. Review the preview and duplicate warnings, then create a new deck, add the cards to an existing deck, or replace an existing deck. You can also type or paste cards as \u201cquestion | answer\u201d, one per line.'],
   ['How do I back up or move all of my data?',
-   'On the Import tab, choose \u201cCreate Backup\u201d. The file includes every profile, deck, card, manual edit, flag, preference, deck order, and saved study position. Creating and restoring backups work offline. You can keep the backup in local storage or a cloud file service such as OneDrive, Box, iCloud Drive, or Google Drive, then choose \u201cRestore Backup\u201d on another device. Restore can replace everything exactly or merge the backup as new profiles without overwriting current data.'],
+   'On the Import tab, choose \u201cCreate Backup\u201d. The file includes every profile, deck, card, manual edit, flag, preference, deck order, and saved study position. Backup and deck-export files are readable, unencrypted JSON, so store and share them carefully. Creating and restoring backups work offline. You can keep the backup locally or in a cloud file service, then choose \u201cRestore Backup\u201d on another device. Restore can replace everything exactly or merge the backup as new profiles without overwriting current data.'],
   ['Why can\u2019t I import some PDFs or Word files?',
    'Scanned or image-only documents contain pictures of text, not real text, so nothing can be extracted without OCR. Convert them to a text-based .docx (open in Word) first, then import.'],
   ['How do decks work?',
@@ -2834,18 +2910,18 @@ function renderFaq() {
 function renderPrivacy() {
   const el = document.getElementById('privacy');
   el.innerHTML = `
-    <p><strong>Your privacy is simple: nothing you enter leaves your device.</strong></p>
+    <p><strong>Your study content stays in this browser unless you choose to export, share, back it up, or submit it to an external service.</strong></p>
     <ul>
-      <li><strong>No data collection.</strong> This app has no accounts, no sign-in, no analytics, and no tracking of any kind.</li>
-      <li><strong>Your questions &amp; answers stay local.</strong> Every deck and card you create or import is stored only in your browser\u2019s local storage on this device. It is never uploaded, transmitted, or shared.</li>
-      <li><strong>Profiles are local too.</strong> Adding a profile simply creates a separate space on this device. There are still no accounts, logins, or passwords, and each profile\u2019s decks and settings never leave your phone.</li>
-      <li><strong>Files are processed on-device.</strong> When you import a .docx, .csv, or .json, it is read entirely within the app on your phone. The file\u2019s contents are not sent anywhere.</li>
-      <li><strong>No servers, no cookies.</strong> The app is a static page served over HTTPS and then cached for offline use. It makes no background network calls with your data.</li>
-      <li><strong>You are in control.</strong> Delete a card, clear a deck, or remove the app to erase your data at any time. Uninstalling or clearing your browser storage permanently deletes everything.</li>
-      <li><strong>Sharing and backups are user-initiated.</strong> Nothing leaves the app unless you choose to share, export, or back it up. Deck exports and full backups are created locally and handed only to the destination <em>you</em> choose. The app cannot see where you save or send them.</li>
-      <li><strong>Feedback is optional and separate.</strong> If you choose to send feedback, it opens GitHub in a new tab; only what you type there is shared, and only because you chose to send it.</li>
+      <li><strong>No application analytics or advertising.</strong> Flashcard Flurry has no app accounts, tracking pixels, behavioral analytics, or advertising identifiers.</li>
+      <li><strong>Local app storage.</strong> Decks, cards, flags, profiles, preferences, and study positions are stored in this browser\u2019s local storage. Imported files are processed in the browser rather than uploaded to a Flashcard Flurry application server.</li>
+      <li><strong>Profiles are not privacy boundaries.</strong> Profiles organize decks but have no passwords or access controls. Anyone using the same browser can switch profiles and read their content.</li>
+      <li><strong>Readable export files.</strong> Deck exports and full backups are unencrypted JSON. A full backup can contain every profile and card. Store and share these files carefully.</li>
+      <li><strong>Saved copies remain separate.</strong> Deleting app data cannot delete backup or export files already saved, shared, attached to messages, or copied to cloud storage.</li>
+      <li><strong>Website delivery.</strong> GitHub Pages and network providers may process ordinary web-request information when they deliver the site and updates. The app\u2019s offline cache contains static app files, not your decks.</li>
+      <li><strong>External links.</strong> Feedback opens GitHub, where sign-in may be required and submitted issues may be public. Other links, including Analog Math Clock, open external websites governed by their own policies.</li>
+      <li><strong>Deletion.</strong> You can delete cards, decks, or profiles. Clearing Flashcard Flurry site data removes locally stored app content from that browser, but not copies stored elsewhere.</li>
     </ul>
-    <p class="privacy-foot">Because all data is stored locally, no one \u2014 including the developer \u2014 can see your decks or study activity.</p>
+    <p class="privacy-foot">The developer does not receive your decks or study activity through the app unless you deliberately include that information in feedback or another external submission.</p>
   `;
 }
 
@@ -2971,7 +3047,12 @@ document.getElementById('clear-btn').addEventListener('click', () => {
 });
 
 function deckFilename(d) { return `${d.name.replace(/[^\w.-]+/g, '_')}.json`; }
-function deckJSON(d) { return JSON.stringify({ name: d.name, cards: d.cards }, null, 2); }
+function deckJSON(d) {
+  return JSON.stringify({
+    name: d.name,
+    cards: d.cards.map(card => ({ q: importValue(card.q), a: importValue(card.a) })),
+  }, null, 2);
+}
 
 function downloadDeck(d) {
   const blob = new Blob([deckJSON(d)], { type: 'application/json' });
@@ -3029,7 +3110,9 @@ function profileStorageValues(profileId) {
   const values = {};
   for (let index = 0; index < localStorage.length; index++) {
     const key = localStorage.key(index);
-    if (key?.startsWith(prefix)) values[key.slice(prefix.length)] = localStorage.getItem(key);
+    if (!key?.startsWith(prefix)) continue;
+    const suffix = key.slice(prefix.length);
+    if (PROFILE_STORAGE_SUFFIX_SET.has(suffix)) values[suffix] = localStorage.getItem(key);
   }
   return values;
 }
@@ -3167,23 +3250,31 @@ function validateProfileData(raw, profileName) {
   assertBackup(data.decks.length > 0, `The profile “${profileName}” does not contain a deck.`);
   const deckIds = new Set();
   const cardIds = new Set();
+  const sanitizedDecks = [];
   for (const deck of data.decks) {
     assertBackup(deck && typeof deck === 'object' && validStoredId(deck.id) &&
       typeof deck.name === 'string' && Array.isArray(deck.cards),
       `A deck in “${profileName}” is invalid.`);
     assertBackup(!deckIds.has(deck.id), `The profile “${profileName}” contains duplicate deck identifiers.`);
     deckIds.add(deck.id);
+    const sanitizedCards = [];
     for (const card of deck.cards) {
       assertBackup(card && typeof card === 'object' &&
         validStoredId(card.id) && typeof card.q === 'string' && typeof card.a === 'string',
       `A card in “${profileName}” is invalid.`);
       assertBackup(!cardIds.has(card.id), `The profile “${profileName}” contains duplicate card identifiers.`);
       cardIds.add(card.id);
+      const sanitizedCard = { id: card.id, q: card.q, a: card.a };
+      if (card.flagged === true) sanitizedCard.flagged = true;
+      sanitizedCards.push(sanitizedCard);
     }
+    const sanitizedDeck = { id: deck.id, name: deck.name, cards: sanitizedCards };
+    if (deck.hidden === true) sanitizedDeck.hidden = true;
+    sanitizedDecks.push(sanitizedDeck);
   }
   assertBackup(validStoredId(data.activeId) && deckIds.has(data.activeId),
     `The profile “${profileName}” has an invalid active deck.`);
-  return data;
+  return { decks: sanitizedDecks, activeId: data.activeId };
 }
 
 function validateStoredStudySession(raw, data, profileName) {
@@ -3207,6 +3298,48 @@ function validateStoredStudySession(raw, data, profileName) {
   assertBackup(Number.isInteger(session.position) &&
     session.position >= 0 && session.position < session.order.length,
   `The study position for “${profileName}” is out of range.`);
+  const order = session.order.map(reference => ({
+    deckId: reference.deckId,
+    cardId: reference.cardId,
+  }));
+  const current = session.current
+    ? { deckId: session.current.deckId, cardId: session.current.cardId }
+    : order[session.position];
+  return {
+    version: 1,
+    label: typeof session.label === 'string' ? session.label.slice(0, 200) : '',
+    reverse: session.reverse === true,
+    deckIds: Array.isArray(session.deckIds)
+      ? session.deckIds.filter(id => data.decks.some(deck => deck.id === id))
+      : [],
+    order,
+    current,
+    position: session.position,
+    updatedAt: Number.isFinite(session.updatedAt) ? session.updatedAt : Date.now(),
+  };
+}
+
+function validateBackupSetting(suffix, value, profileName) {
+  const booleanSettings = new Set([
+    'pref.sound', 'pref.timer', 'pref.highContrast', 'pref.tipsStartup',
+    'pref.tipsNavigate', 'samplesSeeded',
+  ]);
+  if (booleanSettings.has(suffix)) {
+    assertBackup(value === '0' || value === '1',
+      `The setting “${suffix}” for “${profileName}” is invalid.`);
+  } else if (suffix === 'pref.font') {
+    assertBackup(['small', 'default', 'large', 'xl'].includes(value),
+      `The font setting for “${profileName}” is invalid.`);
+  } else if (suffix === 'theme') {
+    assertBackup(['system', 'light', 'dark'].includes(value),
+      `The theme setting for “${profileName}” is invalid.`);
+  } else if (suffix === 'accent') {
+    assertBackup(['indigo', 'blue', 'teal', 'green', 'purple', 'rose', 'orange', 'cranberry'].includes(value),
+      `The accent setting for “${profileName}” is invalid.`);
+  } else if (suffix === 'pref.tipIndex') {
+    assertBackup(/^\d{1,6}$/.test(value),
+      `The tip position for “${profileName}” is invalid.`);
+  }
 }
 
 function validateFullBackup(value) {
@@ -3221,6 +3354,7 @@ function validateFullBackup(value) {
 
   const profileIds = new Set();
   const sanitizedProfiles = [];
+  const sanitizedStorage = Object.create(null);
   for (const profile of registry.profiles) {
     assertBackup(profile && typeof profile === 'object', 'A profile in the backup is invalid.');
     assertBackup(validProfileId(profile.id),
@@ -3242,24 +3376,35 @@ function validateFullBackup(value) {
     const values = value.storage[profile.id];
     assertBackup(values && typeof values === 'object' && !Array.isArray(values),
       `The backup is missing data for “${profile.name}”.`);
+    const sanitizedValues = Object.create(null);
     for (const [suffix, storedValue] of Object.entries(values)) {
-      assertBackup(/^[A-Za-z0-9._-]{1,128}$/.test(suffix) && typeof storedValue === 'string',
-        `The backup contains an invalid setting for “${profile.name}”.`);
+      assertBackup(PROFILE_STORAGE_SUFFIX_SET.has(suffix) && typeof storedValue === 'string',
+        `The backup contains an unsupported setting for “${profile.name}”.`);
+      validateBackupSetting(suffix, storedValue, profile.name);
+      sanitizedValues[suffix] = storedValue;
     }
     assertBackup(typeof values['data.v2'] === 'string',
       `The backup is missing decks for “${profile.name}”.`);
     const data = validateProfileData(values['data.v2'], profile.name);
+    sanitizedValues['data.v2'] = JSON.stringify(data);
     if (typeof values['studySession.v1'] === 'string') {
-      validateStoredStudySession(values['studySession.v1'], data, profile.name);
+      sanitizedValues['studySession.v1'] = JSON.stringify(
+        validateStoredStudySession(values['studySession.v1'], data, profile.name)
+      );
     }
+    sanitizedStorage[profile.id] = sanitizedValues;
   }
   assertBackup(profileIds.has(registry.activeId), 'The backup has an invalid active profile.');
+  for (const storageProfileId of Object.keys(value.storage)) {
+    assertBackup(profileIds.has(storageProfileId), 'The backup contains data for an unknown profile.');
+  }
 
   const created = new Date(value.createdAt);
-  const counts = backupCounts(registry, value.storage);
+  const sanitizedRegistry = { profiles: sanitizedProfiles, activeId: registry.activeId };
+  const counts = backupCounts(sanitizedRegistry, sanitizedStorage);
   return {
-    profiles: { profiles: sanitizedProfiles, activeId: registry.activeId },
-    storage: JSON.parse(JSON.stringify(value.storage)),
+    profiles: sanitizedRegistry,
+    storage: sanitizedStorage,
     createdAt: Number.isNaN(created.getTime()) ? null : created,
     appVersion: typeof value.appVersion === 'string' ? value.appVersion : '',
     counts,
@@ -3430,6 +3575,7 @@ const importTargetWrap = document.getElementById('import-existing-row');
 const importTargetDeck = document.getElementById('import-existing-deck');
 const importSkipDuplicates = document.getElementById('import-skip-duplicates');
 const importResultSummary = document.getElementById('import-result-summary');
+const importPreviewMore = document.getElementById('import-preview-more');
 let pendingImport = null;
 
 function importPairKey(card) {
@@ -3465,6 +3611,13 @@ function analyzeImportedCards(cards) {
 function closeImportPreview() {
   if (importPreviewModal) importPreviewModal.classList.add('hidden');
   pendingImport = null;
+  if (importPreviewSummary) importPreviewSummary.textContent = '';
+  if (importPreviewWarnings) importPreviewWarnings.replaceChildren();
+  if (importPreviewList) importPreviewList.replaceChildren();
+  if (importPreviewMore) importPreviewMore.textContent = '';
+  if (importResultSummary) importResultSummary.textContent = '';
+  if (importDeckName) importDeckName.value = '';
+  if (importTargetDeck) importTargetDeck.replaceChildren();
 }
 
 function updateImportDestination() {
@@ -3858,7 +4011,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v64');
+      waitingWorker.postMessage('activate-v65');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }

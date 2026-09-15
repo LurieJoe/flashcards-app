@@ -21,7 +21,7 @@ Three tabs — **Home**, **Study**, and **Import**:
   reveals **Move up** and **Move down** buttons.
 - **Auto-create a deck (Import tab):** choose from **50+ built-in decks** and pick a
   card count (10/25/50/All) to instantly build a deck from a bundled knowledge base —
-  generated **on-device**, so nothing leaves your phone. Decks are organized into eight
+  generated locally without uploading study content. Decks are organized into eight
   categories: Early Learning & Everyday Basics, Math, Life Science & Health, Physical,
   Earth & Space Science, Language Arts, Geography & Civics, History, Arts & Culture,
   and World Languages. The catalog includes everything from *Animals*, *Fractions*,
@@ -54,7 +54,9 @@ Three tabs — **Home**, **Study**, and **Import**:
   between profiles or add a new one. Each profile keeps its **own decks, appearance,
   font size, and color theme** — perfect for a shared iPad where each kid gets their
   own space. Profiles are **stored on-device only**: no accounts, no passwords, no sync.
-  Your existing cards automatically become the first profile ("Me").
+  Profiles organize content but are not private or locked: anyone using the same browser
+  can switch profiles and read their decks. Your existing cards automatically become the
+  first profile ("Me").
 - **Tips (💡):** tap the **lightbulb** next to the ⚙ gear for a quick set of tips —
   how to switch profiles, import a deck, flag and drill cards, tap to flip, and swipe
   between cards. Toggle **Show tips at startup** (on the Home screen or in Settings)
@@ -75,7 +77,8 @@ Three tabs — **Home**, **Study**, and **Import**:
   and repeated answers. **Skip exact duplicate cards** is on by default; repeated
   questions or answers are warnings only and are never silently removed.
 - **Export selected deck:** the always-visible Import-tab button saves the selected
-  deck to a `.json` file for backup or sharing. Study-tab **Share** remains optimized
+  deck name, questions, and answers to a `.json` file for backup or sharing. Internal
+  card identifiers and review flags are omitted. Study-tab **Share** remains optimized
   for sending the deck through the device share sheet.
 - **Full backup and restore:** **Create Backup** on the Import tab saves every profile, deck, card,
   manual edit, flag, preference, deck order, and saved study position in one versioned
@@ -83,7 +86,9 @@ Three tabs — **Home**, **Study**, and **Import**:
   exact device/domain migration, or **Merge as new profiles** to retain all current
   data without silently overwriting it. Backup files are created and read entirely
   on-device and work offline. The file can be stored locally or in a cloud file
-  service, then selected through **Restore Backup** on another device.
+  service, then selected through **Restore Backup** on another device. Deck exports
+  and full backups are readable, unencrypted JSON; a full backup may contain every
+  profile and card. Clearing app data does not remove copies already saved or shared.
 - **Study (Study tab):**
   - Choose **Flashcards**, **Matching Pairs**, or **Multiple Choice**, then use one
     Start button. Mode-specific controls appear only when relevant.
@@ -136,7 +141,9 @@ Three tabs — **Home**, **Study**, and **Import**:
   (**sound effects** ding on flip, **study timer** with tap-to-pause, **font size**
   Small/Default/Large/XL), a **Help Center** FAQ, **Feedback** (opens a prefilled GitHub
   issue), and a **Privacy Policy**.
-- Everything is saved locally (browser `localStorage`) and survives app restarts.
+- App content is saved locally (browser `localStorage`) and survives app restarts.
+  The public website also stores its non-content theme choice locally and may use
+  session storage to remember an intentional website visit from the installed app.
 
 Example paste input:
 ```

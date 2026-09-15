@@ -378,7 +378,7 @@
         <label class="btn" for="file-input">Import file</label>
         <input id="file-input" type="file" accept=".docx,.json,.txt,.csv" hidden />
         <button id="export-btn" class="btn">Export selected deck</button>
-        <span class="import-hint">.docx, .csv, .txt, or a deck .json</span>
+        <span class="import-hint">.docx, .csv, .txt, or deck .json; up to 10 MB and 10,000 cards</span>
       </div>
 
       <section id="backup-restore" class="backup-restore hidden">
@@ -388,6 +388,9 @@
         </p>
         <p class="help">
           Works offline. Keep the file on this device or in cloud storage so it can be restored elsewhere.
+        </p>
+        <p class="help">
+          Backup and deck-export files are readable, unencrypted JSON. Store and share them carefully.
         </p>
         <div class="backup-actions">
           <button id="backup-all-btn" type="button" class="btn">Create Backup</button>
@@ -500,7 +503,8 @@
       <section class="settings-group">
         <h3>Feedback</h3>
         <p class="settings-note">Found a bug or have an idea? I'd love to hear it.
-          Choose whether to share feedback or report a problem on GitHub.</p>
+          Choose whether to share feedback or report a problem on GitHub. GitHub sign-in may be required,
+          and submitted issues may be public.</p>
         <a id="feedback-link" class="btn primary" target="_blank" rel="noopener"
            href="https://github.com/LurieJoe/flashcards-app/issues/new/choose">Send feedback</a>
       </section>
@@ -541,7 +545,8 @@
       <ul id="profile-list" class="profile-list"></ul>
       <button id="add-profile-btn" class="btn">+ Add profile</button>
       <p class="modal-note">Each profile keeps its own decks, theme, font size, and
-        settings — all on this device. No accounts, no passwords, nothing leaves your phone.</p>
+        settings in this browser. Profiles have no passwords or privacy locks, and anyone
+        using this browser can switch between them.</p>
     </div>
   </div>
 
