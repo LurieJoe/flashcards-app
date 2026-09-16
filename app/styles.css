@@ -1336,6 +1336,16 @@ main {
   margin: auto 0;
   overflow-wrap: anywhere;
 }
+.card-explanation {
+  display: block;
+  max-width: 30rem;
+  margin: 0.65em auto 0;
+  padding-top: 0.65em;
+  border-top: 1px solid currentColor;
+  font-size: 0.68em;
+  line-height: 1.45;
+  opacity: 0.92;
+}
 .card-shape {
   display: inline-block;
   vertical-align: middle;

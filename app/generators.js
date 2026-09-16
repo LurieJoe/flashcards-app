@@ -1165,26 +1165,81 @@
     return `${pitch[0]}${accidental}${pitch.slice(1)}`;
   }
 
+  function teachingAnswer(label, explanation) {
+    return `${label}{{explain|${explanation}}}`;
+  }
+
+  function staffPosition(pitch, clef) {
+    const parsed = parseGeneratorPitch(pitch);
+    const bases = { treble: ['E', 4], bass: ['G', 2] };
+    const [baseLetter, baseOctave] = bases[clef];
+    const offset = parsed.octave * 7 + MUSIC_LETTERS.indexOf(parsed.letter) -
+      (baseOctave * 7 + MUSIC_LETTERS.indexOf(baseLetter));
+    if (offset >= 0 && offset <= 8) {
+      return offset % 2 === 0
+        ? `line ${offset / 2 + 1} from the bottom`
+        : `space ${(offset + 1) / 2} from the bottom`;
+    }
+    if (offset < 0) {
+      const distance = -offset;
+      if (distance === 1) return 'the space just below the staff';
+      return distance % 2 === 0
+        ? `ledger line ${distance / 2} below the staff`
+        : `the space below ledger line ${Math.floor(distance / 2)} below the staff`;
+    }
+    const distance = offset - 8;
+    if (distance === 1) return 'the space just above the staff';
+    return distance % 2 === 0
+      ? `ledger line ${distance / 2} above the staff`
+      : `the space above ledger line ${Math.floor(distance / 2)} above the staff`;
+  }
+
+  function accidentalExplanation(pitch) {
+    const { accidental } = parseGeneratorPitch(pitch);
+    if (accidental === '#') return ' The sharp raises the note one semitone.';
+    if (accidental === 'b') return ' The flat lowers the note one semitone.';
+    if (accidental === 'n') return ' The natural sign cancels a sharp or flat.';
+    return '';
+  }
+
+  function noteExplanation(pitch, clef, grand = false) {
+    const label = pitchLabel(pitch);
+    const middleC = label === 'C4' ? ' C4 is middle C.' : '';
+    const context = grand
+      ? `On the grand staff, it uses the ${clef} staff and sits on ${staffPosition(pitch, clef)}.`
+      : `It is on ${staffPosition(pitch, clef)}.`;
+    return `${label} names the note and octave.${middleC} ${context}${accidentalExplanation(pitch)}`;
+  }
+
   function clefNoteCards(clef, start, end) {
     const naturalPitches = pitchRange(start, end);
     return [
       ...naturalPitches.map(pitch => ({
         q: musicToken('note', clef, pitch),
-        a: `${pitchLabel(pitch)} — ${clef} clef`,
+        a: teachingAnswer(`${pitchLabel(pitch)} — ${clef} clef`, noteExplanation(pitch, clef)),
       })),
       ...naturalPitches.map(pitch => {
         const sharp = addAccidental(pitch, '#');
-        return { q: musicToken('note', clef, sharp), a: `${pitchLabel(sharp)} — ${clef} clef` };
+        return {
+          q: musicToken('note', clef, sharp),
+          a: teachingAnswer(`${pitchLabel(sharp)} — ${clef} clef`, noteExplanation(sharp, clef)),
+        };
       }),
       ...naturalPitches.map(pitch => {
         const flat = addAccidental(pitch, 'b');
-        return { q: musicToken('note', clef, flat), a: `${pitchLabel(flat)} — ${clef} clef` };
+        return {
+          q: musicToken('note', clef, flat),
+          a: teachingAnswer(`${pitchLabel(flat)} — ${clef} clef`, noteExplanation(flat, clef)),
+        };
       }),
       ...naturalPitches.slice(0, 5).map(pitch => {
         const natural = addAccidental(pitch, 'n');
         return {
           q: musicToken('note', clef, natural),
-          a: `${pitchLabel(natural)} — explicit natural sign on ${clef} clef`,
+          a: teachingAnswer(
+            `${pitchLabel(natural)} — natural on ${clef} clef`,
+            noteExplanation(natural, clef),
+          ),
         };
       }),
     ];
@@ -1205,7 +1260,10 @@
       ];
       cards.push(...variants.map(pitch => ({
         q: musicToken('grand', clef, pitch),
-        a: `Grand staff, ${clef} clef: ${pitchLabel(pitch)}`,
+        a: teachingAnswer(
+          `${pitchLabel(pitch)} — ${clef} staff`,
+          noteExplanation(pitch, clef, true),
+        ),
       })));
     }
     return cards;
@@ -1228,10 +1286,17 @@
     return Number.isInteger(value) ? String(value) : String(value).replace('0.25', '¼').replace('0.5', '½');
   }
 
+  function beatLabel(value) {
+    return `${formatBeatCount(value)} beat${value > 1 ? 's' : ''}`;
+  }
+
   function rhythmCards() {
     const singles = RHYTHM_SYMBOLS.map(([code, name, beats]) => ({
       q: musicToken('rhythm', code),
-      a: `${name} — ${formatBeatCount(beats)} beat${beats === 1 ? '' : 's'} in 4/4`,
+      a: teachingAnswer(
+        `${name} — ${beatLabel(beats)} in 4/4`,
+        `${name.includes('rest') ? 'A rest means silence' : 'A note means play a sound'} for ${beatLabel(beats)} in 4/4 time.`,
+      ),
     }));
     const patterns = [];
     for (const first of RHYTHM_SYMBOLS) {
@@ -1239,7 +1304,10 @@
         if (patterns.length >= 40) break;
         patterns.push({
           q: musicToken('rhythm', `${first[0]}+${second[0]}`),
-          a: `${first[1]} + ${second[1]} — ${formatBeatCount(first[2] + second[2])} beats total`,
+          a: teachingAnswer(
+            `${first[1]} + ${second[1]} — ${beatLabel(first[2] + second[2])}`,
+            `Add their lengths: ${formatBeatCount(first[2])} + ${formatBeatCount(second[2])} = ${beatLabel(first[2] + second[2])} in 4/4.`,
+          ),
         });
       }
       if (patterns.length >= 40) break;
@@ -1249,14 +1317,43 @@
 
   const TIME_SIGNATURES = [
     [2, 4, 'simple duple'], [3, 4, 'simple triple'], [4, 4, 'simple quadruple'],
-    [5, 4, 'asymmetrical quintuple'], [6, 4, 'compound duple at a broad pulse'],
-    [2, 2, 'cut time or simple duple'], [3, 8, 'simple triple'],
+    [5, 4, 'asymmetrical quintuple'], [6, 4, 'compound duple'],
+    [2, 2, 'simple duple (cut time)'], [3, 8, 'simple triple'],
     [6, 8, 'compound duple'], [9, 8, 'compound triple'], [12, 8, 'compound quadruple'],
     [5, 8, 'asymmetrical quintuple'], [7, 8, 'asymmetrical septuple'],
   ];
 
   function beatUnitName(denominator) {
     return ({ 2: 'half note', 4: 'quarter note', 8: 'eighth note' })[denominator];
+  }
+
+  function timeSignatureMeaning(top, bottom) {
+    const signature = `${top}/${bottom}`;
+    const unit = beatUnitName(bottom);
+    const groupedPulses = {
+      '6/4': 'usually grouped into 2 dotted-half-note pulses',
+      '6/8': 'usually grouped into 2 dotted-quarter-note pulses',
+      '9/8': 'usually grouped into 3 dotted-quarter-note pulses',
+      '12/8': 'usually grouped into 4 dotted-quarter-note pulses',
+      '5/4': 'often grouped 3+2 or 2+3',
+      '5/8': 'often grouped 3+2 or 2+3',
+      '7/8': 'often grouped 2+2+3, 2+3+2, or 3+2+2',
+    };
+    const grouping = groupedPulses[signature];
+    return `${top} ${unit} count${top === 1 ? '' : 's'} fill each measure${grouping ? `, ${grouping}` : ''}.`;
+  }
+
+  function meterExplanation(meter) {
+    if (meter.startsWith('simple')) {
+      const beats = meter.includes('duple') ? 2 : meter.includes('triple') ? 3 : 4;
+      const grouping = meter.split(' ')[1];
+      return `Simple means each main beat divides into 2. ${grouping[0].toUpperCase() + grouping.slice(1)} means ${beats} main beats.`;
+    }
+    if (meter.startsWith('compound')) {
+      const beats = meter.includes('duple') ? 2 : meter.includes('triple') ? 3 : 4;
+      return `Compound means each main beat divides into 3. ${meter.includes('duple') ? 'Duple' : meter.includes('triple') ? 'Triple' : 'Quadruple'} means ${beats} main beats.`;
+    }
+    return 'Asymmetrical means the beats use an uneven grouping, such as groups of 2 and 3.';
   }
 
   function timeSignatureCards() {
@@ -1266,25 +1363,49 @@
       return [
         {
           q: musicToken('time', top, bottom),
-          a: `Identify: ${signature} (${meter})`,
+          a: teachingAnswer(
+            `Identify: ${signature} — ${meter}`,
+            `${timeSignatureMeaning(top, bottom)} ${meterExplanation(meter)}`,
+          ),
         },
         {
           q: `Top number in ${signature}?`,
-          a: `${signature}: ${top} beats per measure`,
+          a: teachingAnswer(
+            `${signature}: ${top} ${unit}${top === 1 ? '' : 's'} per measure`,
+            `The top number tells how many bottom-number note values fill the measure. ${timeSignatureMeaning(top, bottom)}`,
+          ),
         },
         {
           q: `Bottom number in ${signature}?`,
-          a: `${signature}: ${unit} beat unit`,
+          a: teachingAnswer(
+            `${signature}: ${bottom} represents a ${unit}`,
+            `The bottom number tells which note value the top number counts: 2 = half note, 4 = quarter note, and 8 = eighth note. In compound meter, groups of these note values form each main beat.`,
+          ),
         },
         {
           q: `Meter type of ${signature}?`,
-          a: `Meter: ${meter} in ${signature}`,
+          a: teachingAnswer(
+            `Meter: ${meter} in ${signature}`,
+            meterExplanation(meter),
+          ),
         },
       ];
     });
     cards.push(
-      { q: musicToken('time', 'common'), a: 'Common-time symbol — another way to write 4/4' },
-      { q: musicToken('time', 'cut'), a: 'Cut-time symbol — another way to write 2/2' },
+      {
+        q: musicToken('time', 'common'),
+        a: teachingAnswer(
+          'Common time — 4/4',
+          'The C-shaped symbol means 4 quarter-note beats per measure.',
+        ),
+      },
+      {
+        q: musicToken('time', 'cut'),
+        a: teachingAnswer(
+          'Cut time — 2/2',
+          'The crossed C means 2 half-note beats per measure, often felt in two broad pulses.',
+        ),
+      },
     );
     return cards;
   }
@@ -1311,23 +1432,66 @@
     const recognition = KEY_SIGNATURES.flatMap(([count, major, minor, accidentals]) => [
       {
         q: musicToken('key', 'treble', count, 'major'),
-        a: `Major key: ${major}`,
+        a: teachingAnswer(
+          `Major key: ${major}`,
+          count === 0
+            ? 'This key signature has no sharps or flats.'
+            : `This signature has ${accidentals}. These letter names are ${count > 0 ? 'sharp' : 'flat'} in every octave until the key signature changes; a natural can cancel one temporarily.`,
+        ),
       },
       {
         q: musicToken('key', 'treble', count, 'minor'),
-        a: `Minor key: ${minor}`,
+        a: teachingAnswer(
+          `Minor key: ${minor}`,
+          `${minor} uses the same key signature as ${major}; they are relative minor and major keys.`,
+        ),
       },
     ]);
     const construction = KEY_SIGNATURES.map(([count, major, , accidentals]) => ({
       q: `Accidentals in ${major}?`,
-      a: `${major}: ${count === 0 ? 'none' : accidentals.replace(/, /g, ' ')}`,
+      a: teachingAnswer(
+        `${major}: ${count === 0 ? 'none' : accidentals.replace(/, /g, ' ')}`,
+        count === 0
+          ? 'C major needs no sharps or flats in its key signature.'
+          : `Write these ${count > 0 ? 'sharps' : 'flats'} in the standard order shown. They apply to every matching note unless canceled.`,
+      ),
     }));
     return recognition.concat(construction, [
-      { q: 'Sharps appear in what order?', a: 'F♯, C♯, G♯, D♯, A♯, E♯, B♯' },
-      { q: 'What is the order of flats in key signatures?', a: 'B♭, E♭, A♭, D♭, G♭, C♭, F♭' },
-      { q: 'Find a relative minor from its major key.', a: 'Down 3 semitones, or start on scale degree 6' },
-      { q: 'Neighboring keys on the circle of fifths?', a: 'They differ by 1 sharp or flat' },
-      { q: 'What does a natural sign cancel?', a: 'A sharp or flat for that pitch in the measure' },
+      {
+        q: 'Sharps appear in what order?',
+        a: teachingAnswer(
+          'F♯, C♯, G♯, D♯, A♯, E♯, B♯',
+          'Every sharp key signature adds sharps in this same order, from left to right.',
+        ),
+      },
+      {
+        q: 'What is the order of flats in key signatures?',
+        a: teachingAnswer(
+          'B♭, E♭, A♭, D♭, G♭, C♭, F♭',
+          'Every flat key signature adds flats in this same order, the reverse of the sharp order.',
+        ),
+      },
+      {
+        q: 'Find a relative minor from its major key.',
+        a: teachingAnswer(
+          'Use note 6, or move down 3 half steps',
+          'The relative minor starts on the sixth note of the major scale and shares its key signature. The major key’s starting note is three half steps above it.',
+        ),
+      },
+      {
+        q: 'Neighboring keys on the circle of fifths?',
+        a: teachingAnswer(
+          'They differ by 1 sharp or flat',
+          'Moving one step around the circle changes one accidental, so neighboring keys have many notes in common.',
+        ),
+      },
+      {
+        q: 'What does a natural sign cancel?',
+        a: teachingAnswer(
+          'A sharp or flat for that pitch',
+          'A natural restores the unaltered pitch, usually through the rest of that measure.',
+        ),
+      },
     ]);
   }
 
@@ -1359,9 +1523,13 @@
     return ['C4', 'D4', 'E4', 'F4', 'G4'].flatMap(root =>
       INTERVAL_TYPES.map(([name, degree, semitones]) => {
         const target = intervalTarget(root, degree, semitones);
+        const numberWord = degree === 1 ? 'unison' : `${degree}${degree === 2 ? 'nd' : degree === 3 ? 'rd' : 'th'}`;
         return {
           q: musicToken('interval', 'treble', root, target),
-          a: `${name} — ${pitchLabel(root)} to ${pitchLabel(target)}`,
+          a: teachingAnswer(
+            `${name} — ${pitchLabel(root)} to ${pitchLabel(target)}`,
+            `Count letter names from ${pitchLabel(root)} through ${pitchLabel(target)} to get a ${numberWord}; the notes are ${semitones} semitone${semitones === 1 ? '' : 's'} apart.`,
+          ),
         };
       })
     );
@@ -1381,40 +1549,48 @@
   ];
 
   const MUSIC_SYMBOLS = [
-    ['sharp', 'Sharp — raises a pitch by one semitone'],
-    ['flat', 'Flat — lowers a pitch by one semitone'],
-    ['natural', 'Natural — cancels a sharp or flat'],
-    ['double-sharp', 'Double sharp — raises a pitch by two semitones'],
-    ['double-flat', 'Double flat — lowers a pitch by two semitones'],
-    ['treble-clef', 'Treble clef — G clef'],
-    ['bass-clef', 'Bass clef — F clef'],
-    ['staff', 'Staff — five horizontal lines used for notation'],
-    ['barline', 'Barline — separates measures'],
-    ['double-barline', 'Double barline — section boundary or ending'],
-    ['repeat-start', 'Start repeat — begin the passage to be repeated'],
-    ['repeat-end', 'End repeat — return to the matching start repeat'],
-    ['fermata', 'Fermata — hold the note or rest longer'],
-    ['crescendo', 'Crescendo — gradually become louder'],
-    ['decrescendo', 'Decrescendo — gradually become softer'],
-    ['staccato', 'Staccato — play the note short and detached'],
-    ['accent', 'Accent — emphasize the note'],
-    ['tenuto', 'Tenuto — hold the note for its full value'],
-    ['tie', 'Tie — joins durations of same-pitch notes'],
-    ['slur', 'Slur — connects different pitches smoothly'],
-    ['piano', 'Piano (p) — soft'],
-    ['forte', 'Forte (f) — loud'],
-    ['mezzo-piano', 'Mezzo-piano (mp) — moderately soft'],
-    ['mezzo-forte', 'Mezzo-forte (mf) — moderately loud'],
-    ['fortissimo', 'Fortissimo (ff) — very loud'],
+    ['sharp', 'Sharp — raise 1 semitone', 'Play the note one semitone higher than its natural pitch.'],
+    ['flat', 'Flat — lower 1 semitone', 'Play the note one semitone lower than its natural pitch.'],
+    ['natural', 'Natural — cancel an accidental', 'Return the note to its unsharped and unflatted pitch.'],
+    ['double-sharp', 'Double sharp — raise 2 semitones', 'Raise the written note by two semitones, which equals one whole step.'],
+    ['double-flat', 'Double flat — lower 2 semitones', 'Lower the written note by two semitones, which equals one whole step.'],
+    ['treble-clef', 'Treble clef — G clef', 'The curl circles the G line. It is commonly used for higher notes.'],
+    ['bass-clef', 'Bass clef — F clef', 'The two dots surround the F line. It is commonly used for lower notes.'],
+    ['staff', 'Staff — 5 notation lines', 'Notes are placed on the five lines and four spaces to show pitch.'],
+    ['barline', 'Barline — separates measures', 'A barline divides music into measures according to the time signature.'],
+    ['double-barline', 'Double barline — section boundary', 'Two lines mark the end of a section or an important division in the music.'],
+    ['repeat-start', 'Start repeat — begin repeated music', 'When an end-repeat sign appears later, return to this point.'],
+    ['repeat-end', 'End repeat — go back and repeat', 'Return to the matching start-repeat sign, or to the beginning if none is shown.'],
+    ['fermata', 'Fermata — hold longer', 'Sustain the note or rest longer than its written value; the performer or conductor decides how long.'],
+    ['crescendo', 'Crescendo — gradually louder', 'Increase the volume little by little across the marked passage.'],
+    ['decrescendo', 'Decrescendo — gradually softer', 'Decrease the volume little by little across the marked passage.'],
+    ['staccato', 'Staccato — short and detached', 'Leave a small silence after the note instead of connecting it smoothly.'],
+    ['accent', 'Accent — emphasize the note', 'Play this note with a stronger attack than the notes around it.'],
+    ['tenuto', 'Tenuto — full value', 'Hold the note for its full written length, often with gentle emphasis.'],
+    ['tie', 'Tie — join same-pitch notes', 'Add the durations of two notes with the same pitch and play them as one sound.'],
+    ['slur', 'Slur — connect different pitches', 'Play the grouped notes smoothly in one phrase without detached attacks.'],
+    ['piano', 'Piano (p) — soft', 'The Italian word piano asks for a quiet dynamic level.'],
+    ['forte', 'Forte (f) — loud', 'The Italian word forte asks for a strong, loud dynamic level.'],
+    ['mezzo-piano', 'Mezzo-piano (mp) — moderately soft', 'Mezzo means moderately, so mp is a little louder than piano.'],
+    ['mezzo-forte', 'Mezzo-forte (mf) — moderately loud', 'Mezzo means moderately, so mf is softer than forte.'],
+    ['fortissimo', 'Fortissimo (ff) — very loud', 'Two f letters ask for a louder dynamic than forte.'],
   ];
 
   function chordSymbolCards() {
     return MUSIC_CHORDS.map(([name, pitches]) => ({
       q: musicToken('chord', 'treble', pitches),
-      a: `${name} triad — ${pitches.split(',').map(pitchLabel).join(', ')}`,
-    })).concat(MUSIC_SYMBOLS.map(([symbol, answer]) => ({
+      a: teachingAnswer(
+        `${name} triad — ${pitches.split(',').map(pitchLabel).join(', ')}`,
+        `The root is the chord’s named note. The third and fifth are the notes a third and fifth above it. ${
+          name.includes('diminished') ? 'Its third is minor and its fifth is lowered, creating a tense sound.'
+            : name.includes('augmented') ? 'Its third is major and its fifth is raised, creating an unsettled sound.'
+              : name.includes('minor') ? 'Its minor third gives the triad its minor quality.'
+                : 'Its major third gives the triad its major quality.'
+        }`,
+      ),
+    })).concat(MUSIC_SYMBOLS.map(([symbol, label, explanation]) => ({
       q: musicToken('symbol', symbol),
-      a: answer,
+      a: teachingAnswer(label, explanation),
     })));
   }
 

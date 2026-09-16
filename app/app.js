@@ -2,7 +2,7 @@
 
 /* App version — keep in sync with the service-worker CACHE name.
    Shown at the bottom of Settings so you can confirm which build is running. */
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 
 /* ============================================================
    Storage model (multi-deck)
@@ -1904,10 +1904,10 @@ function musicSymbolSvg(symbol) {
       `<line x1="96" y1="30" x2="96" y2="78"/>` +
       (symbol === 'double-barline' ? '<line x1="104" y1="30" x2="104" y2="78"/>' : '') + '</g>';
   } else if (symbol === 'repeat-start' || symbol === 'repeat-end') {
-    const left = symbol === 'repeat-start' ? 82 : 102;
-    const right = symbol === 'repeat-start' ? 90 : 94;
+    const light = symbol === 'repeat-start' ? 90 : 94;
+    const heavy = symbol === 'repeat-start' ? 82 : 102;
     markup = `<g class="music-lines">${musicStaffLines(30, 12, 24, 166)}` +
-      `<line x1="${left}" y1="30" x2="${left}" y2="78"/><line class="music-heavy-line" x1="${right}" y1="30" x2="${right}" y2="78"/>` +
+      `<line x1="${light}" y1="30" x2="${light}" y2="78"/><line class="music-heavy-line" x1="${heavy}" y1="30" x2="${heavy}" y2="78"/>` +
       `<circle class="music-dot" cx="${symbol === 'repeat-start' ? 102 : 80}" cy="48" r="3"/>` +
       `<circle class="music-dot" cx="${symbol === 'repeat-start' ? 102 : 80}" cy="60" r="3"/></g>`;
   } else if (symbol === 'fermata') {
@@ -2018,6 +2018,9 @@ function renderToken(inner) {
   if (type === 'music') {
     return musicSVG(head[1] || '', segs.slice(1)) || escapeHtml('{{' + inner + '}}');
   }
+  if (type === 'explain') {
+    return `<span class="card-explanation">${inlineMd(escapeHtml(segs.slice(1).join('|')))}</span>`;
+  }
   if (type === 'c' || type === 'color') {
     const color = safeColor(head[1] || '');
     const txt = inlineMd(escapeHtml(segs.slice(1).join('|')));
@@ -2087,6 +2090,7 @@ function shuffled(items) {
 
 function normalizeMatchValue(value) {
   return String(value ?? '')
+    .replace(/\{\{explain\|[^}]*\}\}/gi, '')
     .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
     .replace(/\*\*/g, '')
     .replace(/\*/g, '')
@@ -2121,7 +2125,7 @@ function getMatchEligibleCards(cards) {
     normalizeMatchValue(card.q) &&
     normalizeMatchValue(card.a) &&
     matchSideFits(card.q) &&
-    matchSideFits(card.a));
+    matchSideFits(compactAnswerText(card.a)));
 }
 
 function wrapMatchCards(cards) {
@@ -2131,6 +2135,10 @@ function wrapMatchCards(cards) {
     qKey: normalizeMatchValue(card.q),
     aKey: normalizeMatchValue(card.a),
   }));
+}
+
+function compactAnswerText(value) {
+  return String(value ?? '').replace(/\{\{explain\|[^}]*\}\}/gi, '').trim();
 }
 
 // A round is a matching in a question-to-answer bipartite graph: no two
@@ -2310,7 +2318,11 @@ function renderMatchRound() {
   matchProgress.textContent = `Round ${matchRoundIndex + 1} of ${matchRounds.length} · 0 / ${round.length}`;
 
   const questionTiles = shuffled(round.map(item => ({ item, side: 'q', text: item.card.q })));
-  const answerTiles = shuffled(round.map(item => ({ item, side: 'a', text: item.card.a })));
+  const answerTiles = shuffled(round.map(item => ({
+    item,
+    side: 'a',
+    text: compactAnswerText(item.card.a),
+  })));
   const questionHead = document.createElement('div');
   questionHead.className = 'match-column-head';
   questionHead.textContent = 'Question';
@@ -2449,7 +2461,8 @@ window.addEventListener('resize', () => {
     if (matchArea.classList.contains('hidden')) return;
     if (matchRoundIndex >= matchRounds.length) return;
     const stillFits = matchRounds.slice(matchRoundIndex).every(round =>
-      round.every(item => matchSideFits(item.card.q) && matchSideFits(item.card.a)));
+      round.every(item =>
+        matchSideFits(item.card.q) && matchSideFits(compactAnswerText(item.card.a))));
     if (stillFits) return;
 
     const source = selectedMatchSource();
@@ -2514,7 +2527,7 @@ function choiceOptionFits(text) {
 }
 
 function choiceAnswerItems(card) {
-  const items = splitListItems(String(card.a ?? ''), true).map(item => item.trim()).filter(Boolean);
+  const items = splitListItems(compactAnswerText(card.a), true).map(item => item.trim()).filter(Boolean);
   const unique = new Map();
   for (const text of items) {
     const key = normalizeMatchValue(text);
@@ -2526,6 +2539,7 @@ function choiceAnswerItems(card) {
 function accessibleRichText(text) {
   return String(text ?? '')
     .replace(/\{\{flag:[A-Z]{2}\}\}/gi, 'Flag identification question')
+    .replace(/\{\{explain\|([^}]*)\}\}/gi, '. $1')
     .replace(/\{\{music:([^}]*)\}\}/gi, (_, token) => {
       const segments = token.split('|');
       return musicAccessibleText(segments[0].trim().toLowerCase(), segments.slice(1));
@@ -4344,7 +4358,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('update-ready-restart').addEventListener('click', () => {
       if (!waitingWorker) return;
       updateRequested = true;
-      waitingWorker.postMessage('activate-v66');
+      waitingWorker.postMessage('activate-v67');
     });
     document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
   }

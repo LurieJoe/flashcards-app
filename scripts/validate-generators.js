@@ -45,6 +45,10 @@ function splitListItems(value) {
   return parts.map(part => part.trim()).filter(Boolean);
 }
 
+function compactAnswer(value) {
+  return String(value || '').replace(/\{\{explain\|[^}]*\}\}/gi, '').trim();
+}
+
 const EXPECTED_PACKS_BY_CATEGORY = {
   'early-learning': [
     ['colors', 'Colors'],
@@ -241,8 +245,12 @@ for (const id of MUSIC_PACK_IDS) {
     `${id} should contain rendered music notation.`);
   assert(cards.every(card => !/https?:|<img|data:/i.test(card.q)),
     `${id} must remain offline and avoid external notation assets.`);
-  assert(new Set(cards.map(card => normalize(card.a))).size === cards.length,
-    `${id} needs unique answers so all cards can be scheduled in Matching Pairs.`);
+  assert(cards.every(card => /\{\{explain\|[^}]+\}\}$/.test(card.a)),
+    `${id} must give every card a simple teaching explanation.`);
+  assert(cards.every(card => !/[{}|]/.test(card.a.replace(/^.*\{\{explain\|/, '').replace(/}}$/, ''))),
+    `${id} explanations must not contain token delimiters.`);
+  assert(new Set(cards.map(card => normalize(compactAnswer(card.a)))).size === cards.length,
+    `${id} needs unique compact answers so all cards can be scheduled in Matching Pairs.`);
 }
 
 const grandStaffPitches = getCards('grand-staff-notes').map((card, index) => {
@@ -252,7 +260,30 @@ const grandStaffPitches = getCards('grand-staff-notes').map((card, index) => {
 });
 assert(new Set(grandStaffPitches).size === grandStaffPitches.length,
   'Grand Staff Note Reading must not render the same pitch from two clef ranges.');
-console.log('Validated 400 compact music cards with unique answers and offline notation tokens.');
+
+const timeSignatureCards = getCards('time-signatures');
+const cutTimeMeter = timeSignatureCards.find(card => card.q === 'Meter type of 2/2?');
+assert(cutTimeMeter && /simple duple/i.test(cutTimeMeter.a) && !/asymmetrical/i.test(cutTimeMeter.a),
+  'The 2/2 meter explanation must identify simple duple cut time.');
+assert(timeSignatureCards.every(card => !/written counts|written beat units/i.test(card.a)),
+  'Time-signature explanations should avoid unexplained written-count jargon.');
+
+const keySignatureCards = getCards('key-signatures');
+const cMajorRecognition = keySignatureCards.find(card => compactAnswer(card.a) === 'Major key: C major');
+assert(cMajorRecognition && /has no sharps or flats/i.test(cMajorRecognition.a) &&
+  !/those notes are changed/i.test(cMajorRecognition.a),
+'The C major explanation must handle its empty key signature clearly.');
+const relativeMinor = keySignatureCards.find(card => card.q === 'Find a relative minor from its major key.');
+assert(relativeMinor && /sixth note/i.test(relativeMinor.a) && /half steps/i.test(relativeMinor.a),
+  'The relative-minor explanation must define the sixth-note and half-step methods.');
+
+const chordCards = getCards('chords-symbols').slice(0, 25);
+assert(chordCards.every(card => /The root is the chord’s named note/i.test(card.a)),
+  'Every chord explanation must define the root before using third and fifth.');
+assert(getCards('rhythm-notes-rests').every(card => !/[¼½] beats\b/.test(card.a)),
+  'Fractional rhythm values should use the singular word beat.');
+
+console.log('Validated 400 explained music cards with unique compact answers and offline notation tokens.');
 
 const clockCards = getCards('telling-time');
 const clockEmoji = new Set(
