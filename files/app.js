@@ -1,0 +1,4427 @@
+'use strict';
+
+/* App version — keep in sync with the service-worker CACHE name.
+   Shown at the bottom of Settings so you can confirm which build is running. */
+const APP_VERSION = 'v67';
+
+/* ============================================================
+   Storage model (multi-deck)
+   localStorage["flashcards.data.v2"] = {
+     decks: [{ id, name, cards: [{q,a}] }],
+     activeId: "<deckId>"
+   }
+   Legacy v1 (single list under flashcards.cards.v1) is migrated.
+============================================================ */
+const LEGACY_KEY = 'flashcards.cards.v1';
+
+// Built-in sample decks, seeded once so new (and existing) users have something to try.
+const SAMPLE_DECKS = [
+  {
+    name: 'SAMPLE-Capitals',
+    cards: [
+      { q: 'What is the capital of France?', a: 'Paris' },
+      { q: 'What is the capital of Japan?', a: 'Tokyo' },
+      { q: 'What is the capital of Canada?', a: 'Ottawa' },
+      { q: 'What is the capital of Australia?', a: 'Canberra' },
+      { q: 'What is the capital of Brazil?', a: 'Brasília' },
+    ],
+  },
+  {
+    name: 'SAMPLE-Math',
+    cards: [
+      { q: 'What is 7 × 8?', a: '56' },
+      { q: 'What is 12 + 15?', a: '27' },
+      { q: 'What is 81 ÷ 9?', a: '9' },
+      { q: 'What is 15 − 6?', a: '9' },
+      { q: 'What is the square root of 144?', a: '12' },
+    ],
+  },
+];
+
+let state = { decks: [], activeId: null };
+let studyDeckIds = [];   // decks chosen in the picker (multi-select)
+let studyCards = [];     // flattened cards for the current study session
+let reverseMode = false; // when true, show the answer and guess the question
+let matchRounds = [];    // conflict-free groups for the matching-pairs game
+let matchRoundIndex = 0;
+let matchFirstTile = null;
+let matchLocked = false;
+let matchRoundMatched = 0;
+let matchSessionToken = 0;
+let studyMode = 'flashcards';
+let choiceQuestions = [];
+let choiceQuestionIndex = 0;
+let choiceScore = 0;
+let choiceMissedCards = [];
+let choiceSourceCards = [];
+let choiceSourceDeck = null;
+let choiceCurrentQuestionCards = [];
+let choiceAnswered = false;
+let editOpenedOnce = false; // default Import tab to "My cards" on first open per session
+let order = [];
+let pos = 0;
+let currentStudyLabel = '';
+
+/* ---------- Persistence ---------- */
+function uid(prefix = 'd') { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// Delays calling fn until `wait` ms after the last call — used so full-list re-renders
+// (e.g. card search) don't fire on every keystroke on large decks.
+function debounce(fn, wait = 150) {
+  let t = null;
+  return function debounced(...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
+/* ---------- Profiles (local, no login) ----------
+   Each profile namespaces its own storage under flashcards.p.<id>.<suffix>, so a
+   parent can hand the iPad to different kids and each keeps their own decks, theme,
+   font size, and settings — all on-device. A registry lists profiles + the active
+   one. Legacy (pre-profile) data is migrated into a default profile on first run. */
+const PROFILES_KEY = 'flashcards.profiles.v1';
+const PROFILE_SUFFIXES = [
+  'data.v2', 'studySession.v1', 'pref.sound', 'pref.timer', 'pref.font',
+  'pref.highContrast', 'theme', 'accent', 'samplesSeeded',
+];
+const PROFILE_STORAGE_SUFFIXES = [
+  ...PROFILE_SUFFIXES,
+  'pref.tipsStartup', 'pref.tipsNavigate', 'pref.tipIndex',
+];
+const PROFILE_STORAGE_SUFFIX_SET = new Set(PROFILE_STORAGE_SUFFIXES);
+const LEGACY_GLOBAL = {
+  'data.v2': 'flashcards.data.v2',
+  'pref.sound': 'flashcards.pref.sound',
+  'pref.timer': 'flashcards.pref.timer',
+  'pref.font': 'flashcards.pref.font',
+  'pref.highContrast': 'flashcards.pref.highContrast',
+  'theme': 'flashcards.theme',
+  'accent': 'flashcards.accent',
+  'samplesSeeded': 'flashcards.samplesSeeded',
+};
+const PROFILE_COLORS = ['#6366f1', '#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#a855f7', '#14b8a6'];
+
+let profiles = { profiles: [], activeId: null };
+
+function profileKey(pid, suffix) { return 'flashcards.p.' + pid + '.' + suffix; }
+function K(suffix) { return profileKey(profiles.activeId, suffix); }
+function saveProfiles() { localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles)); }
+
+function loadProfiles() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem(PROFILES_KEY)); } catch { p = null; }
+  if (p && Array.isArray(p.profiles) && p.profiles.length) {
+    profiles = p;
+  } else {
+    // First run with profiles: create a default and migrate any legacy data into it.
+    const pid = uid();
+    profiles = { profiles: [{ id: pid, name: 'Me', color: PROFILE_COLORS[0] }], activeId: pid };
+    for (const suf of PROFILE_SUFFIXES) {
+      const legacyKey = LEGACY_GLOBAL[suf];
+      if (!legacyKey) continue;
+      const legacy = localStorage.getItem(legacyKey);
+      if (legacy !== null) {
+        localStorage.setItem(profileKey(pid, suf), legacy);
+        localStorage.removeItem(legacyKey);
+      }
+    }
+    saveProfiles();
+  }
+  if (!profiles.profiles.some(pr => pr.id === profiles.activeId)) {
+    profiles.activeId = profiles.profiles[0].id;
+  }
+}
+function activeProfile() { return profiles.profiles.find(p => p.id === profiles.activeId) || profiles.profiles[0]; }
+function nextProfileColor() {
+  const used = new Set(profiles.profiles.map(p => p.color));
+  return PROFILE_COLORS.find(c => !used.has(c)) || PROFILE_COLORS[profiles.profiles.length % PROFILE_COLORS.length];
+}
+function deleteProfileData(pid) {
+  const prefix = `flashcards.p.${pid}.`;
+  const keys = [];
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(prefix)) keys.push(key);
+  }
+  keys.forEach(key => localStorage.removeItem(key));
+}
+
+function load() {
+  let migratedLegacyCards = false;
+  try {
+    const raw = localStorage.getItem(K('data.v2'));
+    if (raw) {
+      state = JSON.parse(raw);
+    } else {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      const cards = legacy ? JSON.parse(legacy) : [];
+      state = { decks: [{ id: uid(), name: 'My cards', cards: Array.isArray(cards) ? cards : [] }], activeId: null };
+      state.activeId = state.decks[0].id;
+      migratedLegacyCards = legacy !== null;
+    }
+  } catch {
+    state = { decks: [], activeId: null };
+  }
+  if (!Array.isArray(state.decks)) state.decks = [];
+  if (state.decks.length === 0) {
+    const d = { id: uid(), name: 'My cards', cards: [] };
+    state.decks.push(d);
+    state.activeId = d.id;
+  }
+  if (!state.decks.some(d => d.id === state.activeId)) state.activeId = state.decks[0].id;
+  if (migratedLegacyCards) {
+    save();
+    localStorage.removeItem(LEGACY_KEY);
+  }
+}
+
+function ensureCardIds() {
+  const used = new Set();
+  for (const deck of state.decks) {
+    for (const card of deck.cards) {
+      if (!card.id || used.has(card.id)) card.id = uid('c');
+      used.add(card.id);
+    }
+  }
+}
+
+function save() {
+  ensureCardIds();
+  localStorage.setItem(K('data.v2'), JSON.stringify(state));
+}
+function activeDeck() { return state.decks.find(d => d.id === state.activeId) || state.decks[0]; }
+
+// Seed the built-in sample decks a single time (skips any that already exist by name).
+function ensureSamples() {
+  if (localStorage.getItem(K('samplesSeeded')) === '1') return;
+  const existing = new Set(state.decks.map(d => d.name.toLowerCase()));
+  for (const s of SAMPLE_DECKS) {
+    if (!existing.has(s.name.toLowerCase())) {
+      state.decks.push({ id: uid(), name: s.name, cards: s.cards.map(c => ({ q: c.q, a: c.a })) });
+    }
+  }
+  localStorage.setItem(K('samplesSeeded'), '1');
+}
+
+function uniqueName(base) {
+  let name = base, n = 2;
+  const names = new Set(state.decks.map(d => d.name.toLowerCase()));
+  while (names.has(name.toLowerCase())) { name = `${base} (${n++})`; }
+  return name;
+}
+
+/* ============================================================
+   Text / CSV parsing
+============================================================ */
+function parseInput(text) {
+  const result = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const pair = splitPair(line);
+    if (pair) result.push(pair);
+  }
+  return result;
+}
+
+function splitPair(line) {
+  let sep = -1, sepLen = 1;
+  const pipe = line.indexOf('|');
+  const tab = line.indexOf('\t');
+  const dash = line.indexOf(' - ');
+  if (pipe !== -1) { sep = pipe; sepLen = 1; }
+  else if (tab !== -1) { sep = tab; sepLen = 1; }
+  else if (dash !== -1) { sep = dash; sepLen = 3; }
+  else { return splitCsv(line); }
+  const q = line.slice(0, sep).trim();
+  const a = line.slice(sep + sepLen).trim();
+  return q && a ? { q, a } : null;
+}
+
+function splitCsv(line) {
+  const m = line.match(/^\s*(?:"((?:[^"]|"")*)"|([^,]*))\s*,\s*(?:"((?:[^"]|"")*)"|(.*))\s*$/);
+  if (!m) return null;
+  const q = (m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]).trim();
+  const a = (m[3] !== undefined ? m[3].replace(/""/g, '"') : m[4]).trim();
+  return q && a ? { q, a } : null;
+}
+
+function normLabel(s) {
+  return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').replace(/[.:]+$/, '').trim();
+}
+// Question-side header labels (e.g. "Word or name", "Term", "Vocabulary", "Front").
+const Q_LABELS = /^(q|questions?|words?|word or .+|phrases?|terms?|vocabulary|vocab|front|prompts?|names?)$/;
+// Answer-side header labels (e.g. "One-sentence definition", "Definition", "Meaning").
+const A_LABELS = /^(a|answers?|back|meanings?|descriptions?|(one[- ](word|sentence|line|phrase) )?definitions?)$/;
+// "Strong" answer labels — used on the first row of a table without needing the
+// question cell to also look like a header. Excludes the bare "a" to stay safe.
+const A_STRONG = /^(answers?|back|meanings?|descriptions?|(one[- ](word|sentence|line|phrase) )?definitions?)$/;
+// Definitional header answers (e.g. "One-sentence definition", "Definition", "Meaning").
+// Safe to treat as a header at ANY row position when the same value repeats — real
+// answers are unique sentences, never an identical definitional label.
+const A_DEFN = /^(meanings?|descriptions?|(one[- ](word|sentence|line|phrase) )?definitions?)$/;
+
+function isHeaderQuestionLabel(q) { return Q_LABELS.test(normLabel(q)); }
+function isHeaderAnswerLabel(a) { return A_LABELS.test(normLabel(a)); }
+function isStrongHeaderAnswer(a) { return A_STRONG.test(normLabel(a)); }
+function isDefnHeaderAnswer(a) { return A_DEFN.test(normLabel(a)); }
+
+// A pair that looks like a header on BOTH sides (position-independent, so safe to use
+// everywhere — text/JSON import and the existing-deck cleanup).
+function isHeaderPair(p) {
+  return isHeaderQuestionLabel(p.q) && isHeaderAnswerLabel(p.a);
+}
+
+// Remove any column-header rows (e.g. "Word or phrase" | "One-sentence definition")
+// that slipped into existing decks from older imports. Returns how many were removed.
+function cleanupHeaderCards() {
+  let removed = 0;
+  for (const d of state.decks) {
+    if (!Array.isArray(d.cards)) continue;
+    const answerCount = {};
+    for (const c of d.cards) {
+      const k = normLabel(c.a);
+      answerCount[k] = (answerCount[k] || 0) + 1;
+    }
+    const before = d.cards.length;
+    d.cards = d.cards.filter(c =>
+      !(isHeaderPair(c) || (isDefnHeaderAnswer(c.a) && answerCount[normLabel(c.a)] >= 2)));
+    removed += before - d.cards.length;
+  }
+  return removed;
+}
+
+function cardsToText(cards) { return cards.map(c => `${c.q} | ${c.a}`).join('\n'); }
+
+function cardsFromLines(lines) {
+  lines = lines.filter(l => l && l.trim()).map(l => l.trim());
+  if (lines.length === 0) return { cards: [], method: 'empty' };
+
+  const labelQ = /^(q|question)\s*[:.\)\-]/i;
+  const labelA = /^(a|answer)\s*[:.\)\-]/i;
+  if (lines.some(l => labelQ.test(l)) && lines.some(l => labelA.test(l))) {
+    return { cards: parseLabeled(lines, labelQ, labelA), method: 'labeled Q/A' };
+  }
+
+  const sepLines = lines.filter(l => /\||\t| - /.test(l));
+  if (sepLines.length >= Math.max(1, Math.ceil(lines.length * 0.5))) {
+    const cards = [];
+    for (const l of sepLines) { const p = splitPair(l); if (p && !isHeaderPair(p)) cards.push(p); }
+    return { cards, method: 'separator' };
+  }
+
+  const cards = [];
+  for (let i = 0; i + 1 < lines.length; i += 2) cards.push({ q: lines[i], a: lines[i + 1] });
+  return { cards, method: 'alternating lines' };
+}
+
+function parseLabeled(lines, labelQ, labelA) {
+  const out = [];
+  let q = null, a = null;
+  const stripQ = l => l.replace(/^(q|question)\s*[:.\)\-]\s*/i, '').trim();
+  const stripA = l => l.replace(/^(a|answer)\s*[:.\)\-]\s*/i, '').trim();
+  const flush = () => { if (q && a) out.push({ q, a }); };
+  for (const l of lines) {
+    if (labelQ.test(l)) { flush(); q = stripQ(l); a = null; }
+    else if (labelA.test(l)) { a = (a ? a + ' ' : '') + stripA(l); }
+    else if (a !== null) a += ' ' + l;
+    else if (q !== null) q += ' ' + l;
+  }
+  flush();
+  return out;
+}
+
+/* ============================================================
+   .docx importer (offline, no libraries)
+============================================================ */
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+const MAX_DOCX_XML_BYTES = 20 * 1024 * 1024;
+const MAX_IMPORT_CARDS = 10000;
+
+async function importDocx(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const xml = await extractDocumentXml(buf);
+  const { tableCards, lines } = extractFromDocxXml(xml);
+  if (tableCards.length) return { cards: tableCards, method: 'table' };
+  return cardsFromLines(lines);
+}
+
+async function extractDocumentXml(buf) {
+  if (buf.length < 22) throw new Error('Not a valid .docx (file is incomplete).');
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd === -1) throw new Error('Not a valid .docx (ZIP directory not found).');
+  const cdOffset = view.getUint32(eocd + 16, true);
+  const cdCount = view.getUint16(eocd + 10, true);
+  let p = cdOffset, target = null;
+  const dec = new TextDecoder();
+  for (let n = 0; n < cdCount; n++) {
+    if (view.getUint32(p, true) !== 0x02014b50) break;
+    const method = view.getUint16(p + 10, true);
+    const compSize = view.getUint32(p + 20, true);
+    const uncompSize = view.getUint32(p + 24, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const commentLen = view.getUint16(p + 32, true);
+    const localOff = view.getUint32(p + 42, true);
+    const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    if (name === 'word/document.xml') target = { method, compSize, uncompSize, localOff };
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  if (!target) throw new Error('Could not find document text inside the .docx.');
+  if (target.uncompSize > MAX_DOCX_XML_BYTES) {
+    throw new Error('This Word document expands beyond the 20 MB import limit.');
+  }
+
+  const lo = target.localOff;
+  if (view.getUint32(lo, true) !== 0x04034b50) throw new Error('Corrupt .docx (bad local header).');
+  const nameLen = view.getUint16(lo + 26, true);
+  const extraLen = view.getUint16(lo + 28, true);
+  const dataStart = lo + 30 + nameLen + extraLen;
+  if (dataStart + target.compSize > buf.length) throw new Error('Corrupt .docx (document data is incomplete).');
+  const data = buf.subarray(dataStart, dataStart + target.compSize);
+
+  if (target.method === 0) {
+    if (data.length > MAX_DOCX_XML_BYTES) {
+      throw new Error('This Word document expands beyond the 20 MB import limit.');
+    }
+    return new TextDecoder('utf-8').decode(data);
+  }
+  if (target.method !== 8) throw new Error('Unsupported .docx compression.');
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('This browser can’t unzip .docx. Update iOS/Safari, or paste the text instead.');
+  }
+  const ds = new DecompressionStream('deflate-raw');
+  const stream = new Response(data).body.pipeThrough(ds);
+  const out = await readStreamWithLimit(
+    stream,
+    MAX_DOCX_XML_BYTES,
+    'This Word document expands beyond the 20 MB import limit.'
+  );
+  return new TextDecoder('utf-8').decode(out);
+}
+
+async function readStreamWithLimit(stream, maxBytes, message) {
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error(message);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
+}
+
+function nodeText(node) {
+  let s = '';
+  const walk = (n) => {
+    for (const c of n.childNodes) {
+      if (c.nodeType !== 1) continue;
+      const t = c.tagName;
+      if (t === 'w:t') s += c.textContent;
+      else if (t === 'w:tab') s += '\t';
+      else if (t === 'w:br' || t === 'w:cr') s += '\n';
+      else walk(c);
+    }
+  };
+  walk(node);
+  return s;
+}
+
+function extractFromDocxXml(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('Could not read the document XML.');
+  const body = doc.getElementsByTagName('w:body')[0] || doc.documentElement;
+  const tables = [];   // one entry per table: array of {q,a} rows
+  const lines = [];
+
+  const walkBody = (parent) => {
+    for (const node of Array.from(parent.childNodes)) {
+      if (node.nodeType !== 1) continue;
+      if (node.tagName === 'w:tbl') {
+        const rows = [];
+        for (const row of Array.from(node.getElementsByTagName('w:tr'))) {
+          const cells = Array.from(row.getElementsByTagName('w:tc'));
+          if (cells.length >= 2) {
+            const q = nodeText(cells[0]).replace(/\s+/g, ' ').trim();
+            const a = nodeText(cells[1]).replace(/\s+/g, ' ').trim();
+            if (q && a) rows.push({ q, a });
+          }
+        }
+        if (rows.length) tables.push(rows);
+      } else if (node.tagName === 'w:p') {
+        const txt = nodeText(node).replace(/[ \t]+/g, ' ').trim();
+        if (txt) lines.push(txt);
+      }
+    }
+  };
+  walkBody(body);
+
+  // Structural header detection. Real answers are unique sentences; repeated column
+  // headers show up as the same answer value on several rows (e.g. every section starts
+  // with "One-sentence definition"). Count identical answers across the whole document.
+  const answerCount = {};
+  for (const rows of tables) {
+    for (const r of rows) {
+      const k = normLabel(r.a);
+      answerCount[k] = (answerCount[k] || 0) + 1;
+    }
+  }
+
+  const tableCards = [];
+  for (const rows of tables) {
+    rows.forEach((row, idx) => {
+      const isFirst = idx === 0;
+      const header =
+        isHeaderPair(row) ||                                              // both cells look like headers
+        (isFirst && isStrongHeaderAnswer(row.a)) ||                       // first row, answer is a header label
+        (isDefnHeaderAnswer(row.a) && answerCount[normLabel(row.a)] >= 2); // repeated definitional label, any row
+      if (!header) tableCards.push(row);
+    });
+  }
+  return { tableCards, lines };
+}
+
+/* ============================================================
+   File dispatch
+============================================================ */
+async function importFile(file) {
+  const name = file.name.toLowerCase();
+  if (file.size > MAX_IMPORT_BYTES) throw new Error('This import file is larger than 10 MB.');
+  let result;
+  if (name.endsWith('.docx')) {
+    result = await importDocx(file);
+  } else if (name.endsWith('.json')) {
+    const data = JSON.parse(await file.text());
+    let cards = [];
+    const arr = Array.isArray(data) ? data : data.cards;
+    if (Array.isArray(arr)) {
+      cards = arr.map(x => Array.isArray(x) ? { q: String(x[0]), a: String(x[1]) }
+                                            : {
+                                                q: String(x.q ?? x.question ?? ''),
+                                                a: String(x.a ?? x.answer ?? ''),
+                                                flagged: x.flagged === true
+                                              })
+                 .filter(c => c.q && c.a);
+    }
+    result = { cards, method: 'json', suggestedName: data.name };
+  } else {
+    const text = await file.text();
+    const parsed = parseInput(text);
+    result = parsed.length
+      ? { cards: parsed.filter(p => !isHeaderPair(p)), method: 'text' }
+      : cardsFromLines(text.split(/\r?\n/));
+  }
+  if (result.cards.length > MAX_IMPORT_CARDS) {
+    throw new Error(`This file contains more than ${MAX_IMPORT_CARDS.toLocaleString()} cards.`);
+  }
+  return result;
+}
+
+function baseName(fileName) { return fileName.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim(); }
+
+/* ============================================================
+   Views
+============================================================ */
+const views = {
+  home: document.getElementById('home-view'),
+  study: document.getElementById('study-view'),
+  edit: document.getElementById('edit-view'),
+};
+const tabs = document.querySelectorAll('.tab');
+const deckSelect = document.getElementById('deck-select');
+const status = document.getElementById('edit-status');
+
+function setStatus(msg, ok = true) {
+  status.style.color = ok ? '#4ade80' : 'var(--danger)';
+  status.textContent = msg;
+  if (msg) setTimeout(() => { if (status.textContent === msg) status.textContent = ''; }, 4000);
+}
+
+let toastTimer = null;
+function toast(msg) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+function showView(name) {
+  document.getElementById('settings-view').classList.remove('active');
+  Object.entries(views).forEach(([k, el]) => el.classList.toggle('active', k === name));
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.view === name));
+  if (name !== 'study') stopTimer();
+  if (name === 'study') openDeckPicker();
+  if (name === 'edit') {
+    if (!editOpenedOnce) {
+      editOpenedOnce = true;
+      const myCards = state.decks.find(d => d.name === 'My cards');
+      if (myCards) state.activeId = myCards.id;
+    }
+    renderDeckOptions();
+    document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
+    updateCount();
+    setManualEditorOpen(false);
+    ensureGeneratorsLoaded().then(initGenerator).catch(() => {
+      const genStatusEl = document.getElementById('gen-status');
+      if (genStatusEl) {
+        genStatusEl.style.color = 'var(--danger)';
+        genStatusEl.textContent = 'Could not load built-in decks. Check your connection and try again.';
+      }
+    });
+  }
+  maybeNavTip(name);
+}
+
+tabs.forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
+document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => showView(b.dataset.goto)));
+
+/* ---------- Settings screen ---------- */
+function openSettings() {
+  stopTimer();
+  Object.values(views).forEach(el => el.classList.remove('active'));
+  tabs.forEach(t => t.classList.remove('active'));
+  document.getElementById('settings-view').classList.add('active');
+  window.scrollTo(0, 0);
+}
+document.getElementById('settings-btn').addEventListener('click', openSettings);
+document.getElementById('settings-back').addEventListener('click', () => showView('home'));
+
+/* ---------- Import/Create: deck management ---------- */
+const manualEditor = document.getElementById('manual-editor');
+const manualEditorToggle = document.getElementById('manual-editor-toggle');
+
+function setManualEditorOpen(open) {
+  if (!manualEditor || !manualEditorToggle) return;
+  manualEditor.classList.toggle('hidden', !open);
+  manualEditorToggle.setAttribute('aria-expanded', String(open));
+}
+
+if (manualEditorToggle) {
+  manualEditorToggle.classList.remove('hidden');
+  setManualEditorOpen(false);
+  manualEditorToggle.addEventListener('click', () => {
+    setManualEditorOpen(manualEditorToggle.getAttribute('aria-expanded') !== 'true');
+  });
+}
+
+function renderDeckOptions() {
+  deckSelect.innerHTML = '';
+  for (const d of state.decks) {
+    const opt = document.createElement('option');
+    opt.value = d.id;
+    opt.textContent = `${d.name} (${d.cards.length})` + (d.hidden ? ' — hidden' : '');
+    if (d.id === state.activeId) opt.selected = true;
+    deckSelect.appendChild(opt);
+  }
+}
+
+deckSelect.addEventListener('change', () => {
+  state.activeId = deckSelect.value;
+  save();
+  document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
+  updateCount();
+});
+
+document.getElementById('new-deck-btn').addEventListener('click', () => {
+  const name = prompt('Name for the new deck:', uniqueName('New deck'));
+  if (!name) return;
+  const d = { id: uid(), name: uniqueName(name.trim()), cards: [] };
+  state.decks.push(d);
+  state.activeId = d.id;
+  save();
+  renderDeckOptions();
+  document.getElementById('bulk-input').value = '';
+  updateCount();
+  setManualEditorOpen(true);
+});
+
+document.getElementById('rename-deck-btn').addEventListener('click', () => {
+  const d = activeDeck();
+  const name = prompt('Rename deck:', d.name);
+  if (!name || !name.trim()) return;
+  d.name = name.trim();
+  save();
+  renderDeckOptions();
+});
+
+document.getElementById('delete-deck-btn').addEventListener('click', () => {
+  const d = activeDeck();
+  if (!confirm(`Delete deck "${d.name}" and its ${d.cards.length} cards?`)) return;
+  state.decks = state.decks.filter(x => x.id !== d.id);
+  studyDeckIds = studyDeckIds.filter(id => id !== d.id);
+  if (state.decks.length === 0) state.decks.push({ id: uid(), name: 'My cards', cards: [] });
+  state.activeId = state.decks[0].id;
+  save();
+  renderDeckOptions();
+  document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
+  updateCount();
+});
+
+/* ---------- Study: deck picker (multi-select) ---------- */
+const deckPicker = document.getElementById('deck-picker');
+const deckListEl = document.getElementById('deck-list');
+const studyArea = document.getElementById('study-area');
+const matchArea = document.getElementById('match-area');
+const choiceArea = document.getElementById('choice-area');
+const cardManager = document.getElementById('card-manager');
+const studyModePicker = document.getElementById('study-mode-picker');
+const startModeBtn = document.getElementById('start-mode-btn');
+const modeEligibility = document.getElementById('mode-eligibility');
+const legacyStudyActions = document.getElementById('legacy-study-actions');
+const hasStudyModePicker = !!(studyModePicker && startModeBtn && modeEligibility && choiceArea);
+const resumeStudyPanel = document.getElementById('resume-study-panel');
+const resumeStudySummary = document.getElementById('resume-study-summary');
+const resumeStudyBtn = document.getElementById('resume-study-btn');
+const discardStudyBtn = document.getElementById('discard-study-btn');
+
+function findCardLocation(card) {
+  if (!card) return null;
+  for (const deck of state.decks) {
+    const index = deck.cards.findIndex(candidate =>
+      candidate === card || (card.id && candidate.id === card.id));
+    if (index >= 0) return { deck, index, card: deck.cards[index] };
+  }
+  return null;
+}
+
+function cardReference(card) {
+  const location = findCardLocation(card);
+  return location ? { deckId: location.deck.id, cardId: location.card.id } : null;
+}
+
+function sameCardReference(a, b) {
+  return !!a && !!b && a.deckId === b.deckId && a.cardId === b.cardId;
+}
+
+function readStudySession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(K('studySession.v1')));
+    return session && Array.isArray(session.order) ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStudySession() {
+  localStorage.removeItem(K('studySession.v1'));
+  if (resumeStudyPanel) resumeStudyPanel.classList.add('hidden');
+}
+
+function resolveStudySession(session = readStudySession()) {
+  if (!session) return null;
+  const cards = [];
+  const refs = [];
+  for (const ref of session.order) {
+    const deck = state.decks.find(item => item.id === ref.deckId);
+    const card = deck?.cards.find(item => item.id === ref.cardId);
+    if (!card) continue;
+    cards.push(card);
+    refs.push(ref);
+  }
+  if (!cards.length) {
+    clearStudySession();
+    return null;
+  }
+  let position = Number.isInteger(session.position) ? session.position : 0;
+  if (session.current) {
+    const currentIndex = refs.findIndex(ref => sameCardReference(ref, session.current));
+    if (currentIndex >= 0) position = currentIndex;
+  }
+  position = Math.max(0, Math.min(position, cards.length - 1));
+  return { ...session, cards, position };
+}
+
+function persistStudySession() {
+  if (!studyCards.length || !order.length) return;
+  const orderedRefs = order.map(index => cardReference(studyCards[index])).filter(Boolean);
+  const current = cardReference(studyCards[order[pos]]);
+  if (!orderedRefs.length || !current) return;
+  const position = orderedRefs.findIndex(ref => sameCardReference(ref, current));
+  localStorage.setItem(K('studySession.v1'), JSON.stringify({
+    version: 1,
+    label: currentStudyLabel,
+    reverse: reverseMode,
+    deckIds: studyDeckIds.slice(),
+    order: orderedRefs,
+    current,
+    position: position >= 0 ? position : 0,
+    updatedAt: Date.now(),
+  }));
+}
+
+function renderResumeStudy() {
+  if (!resumeStudyPanel || !resumeStudySummary) return;
+  const session = resolveStudySession();
+  resumeStudyPanel.classList.toggle('hidden', !session);
+  if (!session) return;
+  resumeStudySummary.textContent =
+    `${session.label || 'Flashcards'} · card ${session.position + 1} of ${session.cards.length}`;
+}
+
+function resumeStudySession() {
+  const session = resolveStudySession();
+  if (!session) {
+    toast('That study session is no longer available.');
+    return;
+  }
+  studyDeckIds = Array.isArray(session.deckIds)
+    ? session.deckIds.filter(id => state.decks.some(deck => deck.id === id))
+    : [];
+  beginSession(session.cards, session.label || 'Flashcards', session.reverse, session.position);
+}
+
+function openDeckPicker() {
+  matchSessionToken++;
+  studyArea.classList.add('hidden');
+  matchArea.classList.add('hidden');
+  if (choiceArea) choiceArea.classList.add('hidden');
+  if (cardManager) cardManager.classList.add('hidden');
+  deckPicker.classList.remove('hidden');
+  stopTimer();
+  timerEl.classList.add('hidden');
+  const ss = document.getElementById('search-status');
+  if (ss) ss.textContent = '';
+  renderDeckList();
+  renderResumeStudy();
+}
+
+if (resumeStudyBtn) resumeStudyBtn.addEventListener('click', resumeStudySession);
+if (discardStudyBtn) discardStudyBtn.addEventListener('click', () => {
+  clearStudySession();
+  toast('Saved study position dismissed.');
+});
+
+function setStudyMode(mode) {
+  if (!hasStudyModePicker) return;
+  if (!['flashcards', 'matching', 'multiple-choice'].includes(mode)) return;
+  studyMode = mode;
+  studyModePicker.hidden = false;
+  startModeBtn.hidden = false;
+  if (legacyStudyActions) legacyStudyActions.hidden = true;
+  document.querySelectorAll('.study-mode-option').forEach(button => {
+    const active = button.dataset.studyMode === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-checked', String(active));
+  });
+
+  const flashcards = mode === 'flashcards';
+  document.getElementById('search-form').classList.toggle('hidden', !flashcards);
+  document.getElementById('search-status').classList.toggle('hidden', !flashcards);
+  document.getElementById('select-all-btn').classList.toggle('hidden', !flashcards);
+  document.getElementById('reverse-row').classList.toggle('hidden', !flashcards);
+  document.getElementById('deck-selection-help').textContent = flashcards
+    ? 'Select one or more decks. Multiple decks are studied together.'
+    : 'Select one deck for this study mode.';
+
+  if (!flashcards) {
+    const checked = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')];
+    checked.slice(1).forEach(box => { box.checked = false; });
+  }
+  startModeBtn.textContent = mode === 'flashcards'
+    ? 'Start Flashcards'
+    : mode === 'matching'
+      ? 'Start Matching Pairs'
+      : 'Start Multiple Choice';
+  updateStudyEligibility();
+}
+
+document.querySelectorAll('.study-mode-option').forEach(button =>
+  button.addEventListener('click', () => setStudyMode(button.dataset.studyMode)));
+
+function setDeckHidden(id, hidden) {
+  const d = state.decks.find(x => x.id === id);
+  if (!d) return;
+  d.hidden = hidden;
+  save();
+  renderDeckList();
+}
+
+function selectedPickerDeckIds() {
+  return [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(box => box.value);
+}
+
+function moveDeck(id, direction) {
+  const checked = selectedPickerDeckIds();
+  const from = state.decks.findIndex(deck => deck.id === id);
+  if (from < 0) return;
+  let to = from + direction;
+  while (to >= 0 && to < state.decks.length && state.decks[to].hidden) to += direction;
+  if (to < 0 || to >= state.decks.length) return;
+  [state.decks[from], state.decks[to]] = [state.decks[to], state.decks[from]];
+  studyDeckIds = checked;
+  save();
+  renderDeckOptions();
+  renderDeckList();
+}
+
+function renderDeckList() {
+  const visibleDecks = state.decks.filter(d => !d.hidden);
+  const hiddenDecks = state.decks.filter(d => d.hidden);
+  const anyVisibleCards = visibleDecks.some(d => d.cards.length > 0);
+  const anyCardsAtAll = state.decks.some(d => d.cards.length > 0);
+
+  document.getElementById('picker-empty').classList.toggle('hidden', anyCardsAtAll);
+  document.getElementById('picker-controls').classList.toggle('hidden', !anyVisibleCards);
+  deckListEl.classList.toggle('hidden', !anyVisibleCards);
+
+  deckListEl.innerHTML = '';
+  const preselect = studyDeckIds.length ? studyDeckIds : [state.activeId];
+  for (let visibleIndex = 0; visibleIndex < visibleDecks.length; visibleIndex++) {
+    const d = visibleDecks[visibleIndex];
+    const flagged = d.cards.filter(c => c.flagged).length;
+    const li = document.createElement('li');
+    li.className = 'deck-row';
+
+    // Actions revealed behind the row (swipe-left on touch, hover on desktop).
+    const actions = document.createElement('div');
+    actions.className = 'deck-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'deck-edit-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.setAttribute('aria-label', `Edit cards in ${d.name}`);
+    editBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openCardManager(d.id);
+    });
+
+    const shareBtn = document.createElement('button');
+    shareBtn.type = 'button';
+    shareBtn.className = 'deck-share-btn';
+    shareBtn.textContent = 'Share';
+    shareBtn.setAttribute('aria-label', `Share ${d.name}`);
+    shareBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); shareDeck(d); });
+
+    const hideBtn = document.createElement('button');
+    hideBtn.type = 'button';
+    hideBtn.className = 'deck-hide-btn';
+    hideBtn.textContent = 'Hide';
+    hideBtn.setAttribute('aria-label', `Hide ${d.name} from Study`);
+    hideBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setDeckHidden(d.id, true); });
+
+    if (cardManager) actions.appendChild(editBtn);
+    actions.appendChild(shareBtn);
+    actions.appendChild(hideBtn);
+
+    const swipe = document.createElement('div');
+    swipe.className = 'deck-swipe';
+
+    const item = document.createElement('div');
+    item.className = 'deck-item' + (d.cards.length === 0 ? ' disabled' : '');
+
+    const reorderBtn = document.createElement('button');
+    reorderBtn.type = 'button';
+    reorderBtn.className = 'deck-reorder-btn';
+    reorderBtn.textContent = '☰';
+    reorderBtn.title = `Reorder ${d.name}`;
+    reorderBtn.setAttribute('aria-label', `Reorder ${d.name}`);
+
+    const reorderControls = document.createElement('span');
+    reorderControls.className = 'deck-reorder-controls';
+
+    const moveUpBtn = document.createElement('button');
+    moveUpBtn.type = 'button';
+    moveUpBtn.className = 'deck-move-btn';
+    moveUpBtn.textContent = '↑';
+    moveUpBtn.title = `Move ${d.name} up`;
+    moveUpBtn.setAttribute('aria-label', `Move ${d.name} up`);
+    moveUpBtn.disabled = visibleIndex === 0;
+    moveUpBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      moveDeck(d.id, -1);
+    });
+
+    const moveDownBtn = document.createElement('button');
+    moveDownBtn.type = 'button';
+    moveDownBtn.className = 'deck-move-btn';
+    moveDownBtn.textContent = '↓';
+    moveDownBtn.title = `Move ${d.name} down`;
+    moveDownBtn.setAttribute('aria-label', `Move ${d.name} down`);
+    moveDownBtn.disabled = visibleIndex === visibleDecks.length - 1;
+    moveDownBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      moveDeck(d.id, 1);
+    });
+    reorderControls.appendChild(moveUpBtn);
+    reorderControls.appendChild(moveDownBtn);
+    reorderBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const opening = !li.classList.contains('reordering');
+      deckListEl.querySelectorAll('.deck-row.reordering').forEach(row => row.classList.remove('reordering'));
+      li.classList.toggle('reordering', opening);
+    });
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = `study-deck-${d.id}`;
+    cb.value = d.id;
+    cb.checked = d.cards.length > 0 && preselect.includes(d.id);
+    cb.disabled = d.cards.length === 0;
+
+    const text = document.createElement('span');
+    text.className = 'deck-item-name';
+    text.textContent = d.name;
+
+    const count = document.createElement('span');
+    count.className = 'deck-item-count';
+    count.textContent = d.cards.length === 0 ? 'empty' : `${d.cards.length}`;
+
+    const label = document.createElement('label');
+    label.className = 'deck-select-label';
+    label.htmlFor = cb.id;
+    label.appendChild(cb);
+    label.appendChild(text);
+    if (flagged > 0) {
+      const flag = document.createElement('span');
+      flag.className = 'deck-item-flag';
+      flag.textContent = `⚑ ${flagged}`;
+      label.appendChild(flag);
+    }
+    label.appendChild(count);
+    item.appendChild(reorderBtn);
+    item.appendChild(reorderControls);
+    item.appendChild(label);
+    swipe.appendChild(item);
+    li.appendChild(actions);
+    li.appendChild(swipe);
+    attachSwipeToActions(li, swipe, item);
+    deckListEl.appendChild(li);
+  }
+
+  renderHiddenDecks(hiddenDecks);
+  updateFlaggedTotal();
+  if (hasStudyModePicker) setStudyMode(studyMode);
+  else updateLegacyMatchEligibility();
+}
+
+// Touch swipe-left reveals Edit, Share, and Hide; tapping a revealed row closes it.
+function attachSwipeToActions(row, swipe, item) {
+  const OPEN = cardManager ? 234 : 176;
+  let startX = null, base = 0, moved = false;
+
+  const close = () => { row.classList.remove('revealed'); swipe.style.transform = ''; };
+  const open = () => { row.classList.add('revealed'); swipe.style.transform = `translateX(-${OPEN}px)`; };
+
+  swipe.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    base = row.classList.contains('revealed') ? -OPEN : 0;
+    moved = false;
+  }, { passive: true });
+
+  swipe.addEventListener('touchmove', (e) => {
+    if (startX === null) return;
+    const dx = e.touches[0].clientX - startX;
+    if (Math.abs(dx) > 6) moved = true;
+    let t = Math.max(-OPEN, Math.min(0, base + dx));
+    swipe.style.transform = `translateX(${t}px)`;
+  }, { passive: true });
+
+  swipe.addEventListener('touchend', () => {
+    if (startX === null) return;
+    const current = new DOMMatrix(getComputedStyle(swipe).transform).m41;
+    if (current <= -OPEN / 2) open(); else close();
+    startX = null;
+  });
+
+  // If revealed, a tap closes instead of toggling the checkbox.
+  item.addEventListener('click', (e) => {
+    if (row.classList.contains('revealed')) { e.preventDefault(); close(); }
+  });
+  // Close any other open row when this one is interacted with.
+  swipe.addEventListener('touchstart', () => {
+    deckListEl.querySelectorAll('.deck-row.revealed').forEach(r => {
+      if (r !== row) { r.classList.remove('revealed'); const s = r.querySelector('.deck-swipe'); if (s) s.style.transform = ''; }
+    });
+  }, { passive: true });
+}
+
+/* ---------- Study: individual card manager ---------- */
+const cardManagerList = document.getElementById('card-manager-list');
+const cardManagerTitle = document.getElementById('card-manager-title');
+const cardManagerEmpty = document.getElementById('card-manager-empty');
+const cardManagerNoResults = document.getElementById('card-manager-no-results');
+const cardManagerSearch = document.getElementById('card-manager-search');
+const cardManagerSearchClear = document.getElementById('card-manager-search-clear');
+const cardManagerSearchStatus = document.getElementById('card-manager-search-status');
+if (cardManagerSearch) cardManagerSearch.closest('.card-manager-search')?.classList.remove('hidden');
+const cardEditorModal = document.getElementById('card-editor-modal');
+const cardEditorTitle = document.getElementById('card-editor-title');
+const cardEditorQuestion = document.getElementById('card-editor-question');
+const cardEditorAnswer = document.getElementById('card-editor-answer');
+const cardEditorStatus = document.getElementById('card-editor-status');
+const cardEditorDuplicate = document.getElementById('card-editor-duplicate');
+const cardEditorDelete = document.getElementById('card-editor-delete');
+const bulletEditorModal = document.getElementById('bullet-editor-modal');
+const bulletEditorTitle = document.getElementById('bullet-editor-title');
+const bulletEditorList = document.getElementById('bullet-editor-list');
+const bulletEditorStatus = document.getElementById('bullet-editor-status');
+let cardManagerDeckId = null;
+let cardEditorIndex = -1;
+let cardEditorOrigin = 'manager';
+let bulletEditorTarget = null;
+let bulletEditorItems = [];
+
+function managedDeck() {
+  return state.decks.find(deck => deck.id === cardManagerDeckId) || null;
+}
+
+function syncBulkEditorForDeck(deck) {
+  if (!deck || deck.id !== state.activeId) return;
+  const bulk = document.getElementById('bulk-input');
+  if (bulk) bulk.value = cardsToText(deck.cards);
+  updateCount();
+}
+
+function openCardManager(deckId) {
+  if (!cardManager || !cardManagerList) return;
+  const deck = state.decks.find(item => item.id === deckId);
+  if (!deck) return;
+  cardManagerDeckId = deck.id;
+  if (cardManagerSearch) cardManagerSearch.value = '';
+  if (cardManagerSearchClear) cardManagerSearchClear.classList.add('hidden');
+  state.activeId = deck.id;
+  save();
+  deckPicker.classList.add('hidden');
+  studyArea.classList.add('hidden');
+  matchArea.classList.add('hidden');
+  if (choiceArea) choiceArea.classList.add('hidden');
+  cardManager.classList.remove('hidden');
+  renderCardManager();
+  window.scrollTo(0, 0);
+}
+
+function renderCardManager() {
+  const deck = managedDeck();
+  if (!deck || !cardManagerList) {
+    openDeckPicker();
+    return;
+  }
+  cardManagerTitle.textContent = `${deck.name} · ${deck.cards.length} card${deck.cards.length === 1 ? '' : 's'}`;
+  cardManagerList.innerHTML = '';
+  const term = cardManagerSearch?.value.trim().toLowerCase() || '';
+  const matches = deck.cards.map((card, index) => ({ card, index })).filter(({ card }) =>
+    !term ||
+    accessibleRichText(card.q).toLowerCase().includes(term) ||
+    accessibleRichText(card.a).toLowerCase().includes(term));
+  const deckIsEmpty = deck.cards.length === 0;
+  const noMatches = !deckIsEmpty && matches.length === 0;
+  cardManagerEmpty.classList.toggle('hidden', !deckIsEmpty);
+  if (cardManagerNoResults) cardManagerNoResults.classList.toggle('hidden', !noMatches);
+  cardManagerList.classList.toggle('hidden', deckIsEmpty || noMatches);
+  if (cardManagerSearchStatus) {
+    cardManagerSearchStatus.textContent = term
+      ? `${matches.length} matching card${matches.length === 1 ? '' : 's'}`
+      : '';
+  }
+  if (cardManagerSearchClear) cardManagerSearchClear.classList.toggle('hidden', !term);
+
+  matches.forEach(({ card, index }) => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'card-manager-row';
+    button.setAttribute('aria-label', `Edit card ${index + 1}: ${accessibleRichText(card.q)}`);
+
+    const question = document.createElement('span');
+    question.className = 'card-manager-row-question';
+    question.textContent = `${index + 1}. ${accessibleRichText(card.q) || 'Untitled question'}`;
+    if (card.flagged) {
+      const flag = document.createElement('span');
+      flag.className = 'card-manager-row-flag';
+      flag.textContent = 'Flagged';
+      question.appendChild(flag);
+    }
+
+    const answer = document.createElement('span');
+    answer.className = 'card-manager-row-answer';
+    answer.textContent = accessibleRichText(card.a) || 'No answer';
+    button.appendChild(question);
+    button.appendChild(answer);
+    button.addEventListener('click', () => openCardEditor(index));
+    item.appendChild(button);
+    cardManagerList.appendChild(item);
+  });
+}
+
+function setCardEditorText(textarea, storedText) {
+  const raw = String(storedText ?? '');
+  const items = splitListItems(raw).map(item => item.trim()).filter(Boolean);
+  const isList = items.length > 1;
+  textarea.value = isList ? items.map(item => `• ${item}`).join('\n') : (items[0] ?? raw);
+  textarea.dataset.listDisplay = isList ? '1' : '0';
+}
+
+function editorListItems(textarea) {
+  const lines = textarea.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (textarea.dataset.listDisplay === '1' ||
+      (lines.length > 1 && lines.every(line => line.startsWith('•')))) {
+    return lines.map(line => line.replace(/^•\s*/, '').trim()).filter(Boolean);
+  }
+  return textarea.value.trim() ? [textarea.value.trim()] : [];
+}
+
+function escapeListSeparators(text) {
+  return text.replace(/(^|[^\\]);/g, '$1\\;');
+}
+
+function cardEditorTextToStored(textarea) {
+  const items = editorListItems(textarea);
+  if (items.length > 1) return items.map(item => escapeListSeparators(item)).join('; ');
+  return items.length ? escapeListSeparators(items[0]) : '';
+}
+
+function openCardEditor(index = -1, origin = 'manager') {
+  if (!cardEditorModal) return;
+  const deck = managedDeck();
+  if (!deck) return;
+  const card = index >= 0 ? deck.cards[index] : null;
+  cardEditorOrigin = origin;
+  cardEditorIndex = card ? index : -1;
+  cardEditorTitle.textContent = origin === 'study' ? 'Edit study card' : (card ? 'Edit card' : 'Add card');
+  setCardEditorText(cardEditorQuestion, card ? card.q : '');
+  setCardEditorText(cardEditorAnswer, card ? card.a : '');
+  cardEditorStatus.textContent = '';
+  cardEditorDuplicate.classList.toggle('hidden', !card || origin === 'study');
+  cardEditorDelete.classList.toggle('hidden', !card || origin === 'study');
+  cardEditorModal.classList.remove('hidden');
+  setTimeout(() => cardEditorQuestion.focus(), 0);
+}
+
+function closeCardEditor() {
+  if (cardEditorModal) cardEditorModal.classList.add('hidden');
+  cardEditorOrigin = 'manager';
+}
+
+function wrapSelectedText(textarea, marker) {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const selected = textarea.value.slice(start, end);
+  const replacement = `${marker}${selected}${marker}`;
+  textarea.setRangeText(replacement, start, end, 'end');
+  if (!selected) textarea.setSelectionRange(start + marker.length, start + marker.length);
+  else textarea.setSelectionRange(start, start + replacement.length);
+  textarea.focus();
+}
+
+function renderBulletEditor() {
+  if (!bulletEditorList) return;
+  bulletEditorList.innerHTML = '';
+  bulletEditorItems.forEach((text, index) => {
+    const row = document.createElement('div');
+    row.className = 'bullet-editor-row';
+
+    const marker = document.createElement('span');
+    marker.className = 'bullet-editor-marker';
+    marker.textContent = '•';
+    marker.setAttribute('aria-hidden', 'true');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'bullet-editor-input';
+    input.value = text;
+    input.setAttribute('aria-label', `List item ${index + 1}`);
+    input.addEventListener('input', () => { bulletEditorItems[index] = input.value; });
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'bullet-editor-move';
+    up.textContent = '↑';
+    up.title = 'Move item up';
+    up.setAttribute('aria-label', `Move item ${index + 1} up`);
+    up.disabled = index === 0;
+    up.addEventListener('click', () => {
+      [bulletEditorItems[index - 1], bulletEditorItems[index]] =
+        [bulletEditorItems[index], bulletEditorItems[index - 1]];
+      renderBulletEditor();
+      bulletEditorList.querySelectorAll('.bullet-editor-input')[index - 1]?.focus();
+    });
+
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'bullet-editor-move';
+    down.textContent = '↓';
+    down.title = 'Move item down';
+    down.setAttribute('aria-label', `Move item ${index + 1} down`);
+    down.disabled = index === bulletEditorItems.length - 1;
+    down.addEventListener('click', () => {
+      [bulletEditorItems[index], bulletEditorItems[index + 1]] =
+        [bulletEditorItems[index + 1], bulletEditorItems[index]];
+      renderBulletEditor();
+      bulletEditorList.querySelectorAll('.bullet-editor-input')[index + 1]?.focus();
+    });
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'bullet-editor-delete';
+    remove.textContent = 'Delete';
+    remove.setAttribute('aria-label', `Delete item ${index + 1}`);
+    remove.addEventListener('click', () => {
+      bulletEditorItems.splice(index, 1);
+      if (!bulletEditorItems.length) bulletEditorItems.push('');
+      renderBulletEditor();
+      bulletEditorList.querySelectorAll('.bullet-editor-input')[Math.min(index, bulletEditorItems.length - 1)]?.focus();
+    });
+
+    row.appendChild(marker);
+    row.appendChild(input);
+    row.appendChild(up);
+    row.appendChild(down);
+    row.appendChild(remove);
+    bulletEditorList.appendChild(row);
+  });
+}
+
+function openBulletEditor(textarea) {
+  if (!bulletEditorModal || !bulletEditorList) return;
+  bulletEditorTarget = textarea;
+  const items = editorListItems(textarea);
+  bulletEditorItems = items.length ? items : ['', ''];
+  if (bulletEditorItems.length === 1) bulletEditorItems.push('');
+  bulletEditorTitle.textContent = `Edit ${textarea === cardEditorQuestion ? 'question' : 'answer'} list`;
+  bulletEditorStatus.textContent = '';
+  renderBulletEditor();
+  bulletEditorModal.classList.remove('hidden');
+  setTimeout(() => bulletEditorList.querySelector('.bullet-editor-input')?.focus(), 0);
+}
+
+function closeBulletEditor() {
+  if (bulletEditorModal) bulletEditorModal.classList.add('hidden');
+  bulletEditorTarget = null;
+  bulletEditorItems = [];
+}
+
+function applyBulletEditor() {
+  if (!bulletEditorTarget) return;
+  const items = bulletEditorItems.map(item => item.trim()).filter(Boolean);
+  if (items.length < 2) {
+    bulletEditorStatus.textContent = 'Add at least two list items.';
+    return;
+  }
+  bulletEditorTarget.value = items.map(item => `• ${item}`).join('\n');
+  bulletEditorTarget.dataset.listDisplay = '1';
+  bulletEditorTarget.focus();
+  closeBulletEditor();
+}
+
+document.querySelectorAll('.format-btn').forEach(button => {
+  button.addEventListener('click', () => {
+    const textarea = document.getElementById(button.dataset.target);
+    if (!textarea) return;
+    const format = button.dataset.format;
+    if (format === 'list') {
+      openBulletEditor(textarea);
+      return;
+    }
+    const markers = { bold: '**', italic: '*', underline: '__' };
+    if (markers[format]) wrapSelectedText(textarea, markers[format]);
+  });
+});
+const bulletEditorClose = document.getElementById('bullet-editor-close');
+if (bulletEditorClose) bulletEditorClose.addEventListener('click', closeBulletEditor);
+const bulletEditorCancel = document.getElementById('bullet-editor-cancel');
+if (bulletEditorCancel) bulletEditorCancel.addEventListener('click', closeBulletEditor);
+const bulletEditorAdd = document.getElementById('bullet-editor-add');
+if (bulletEditorAdd) {
+  bulletEditorAdd.addEventListener('click', () => {
+    bulletEditorItems.push('');
+    renderBulletEditor();
+    bulletEditorList.querySelectorAll('.bullet-editor-input')[bulletEditorItems.length - 1]?.focus();
+  });
+}
+const bulletEditorApply = document.getElementById('bullet-editor-apply');
+if (bulletEditorApply) bulletEditorApply.addEventListener('click', applyBulletEditor);
+if (bulletEditorModal) {
+  bulletEditorModal.addEventListener('click', event => {
+    if (event.target === bulletEditorModal) closeBulletEditor();
+  });
+}
+
+function saveCardEditor() {
+  const deck = managedDeck();
+  if (!deck) return;
+  const editingStudyCard = cardEditorOrigin === 'study';
+  const q = cardEditorTextToStored(cardEditorQuestion);
+  const a = cardEditorTextToStored(cardEditorAnswer);
+  if (!q || !a) {
+    cardEditorStatus.textContent = 'Enter both a question and an answer.';
+    return;
+  }
+  if (cardEditorIndex >= 0) {
+    const existing = deck.cards[cardEditorIndex];
+    Object.assign(existing, { q, a });
+  } else {
+    deck.cards.push({ q, a });
+  }
+  save();
+  syncBulkEditorForDeck(deck);
+  renderDeckOptions();
+  if (editingStudyCard) {
+    showCard();
+    persistStudySession();
+  } else {
+    renderCardManager();
+  }
+  closeCardEditor();
+  toast(cardEditorIndex >= 0 ? 'Card updated.' : 'Card added.');
+}
+
+function duplicateCardEditor() {
+  const deck = managedDeck();
+  if (!deck || cardEditorIndex < 0 || !deck.cards[cardEditorIndex]) return;
+  const source = deck.cards[cardEditorIndex];
+  deck.cards.splice(cardEditorIndex + 1, 0, { ...source, flagged: false });
+  save();
+  syncBulkEditorForDeck(deck);
+  renderDeckOptions();
+  renderCardManager();
+  closeCardEditor();
+  toast('Card duplicated.');
+}
+
+function deleteCardEditor() {
+  const deck = managedDeck();
+  if (!deck || cardEditorIndex < 0 || !deck.cards[cardEditorIndex]) return;
+  if (!confirm('Delete this card?')) return;
+  deck.cards.splice(cardEditorIndex, 1);
+  save();
+  syncBulkEditorForDeck(deck);
+  renderDeckOptions();
+  renderCardManager();
+  closeCardEditor();
+  toast('Card deleted.');
+}
+
+const cardManagerBack = document.getElementById('card-manager-back');
+if (cardManagerBack) cardManagerBack.addEventListener('click', openDeckPicker);
+if (cardManagerSearch) cardManagerSearch.addEventListener('input', debounce(renderCardManager, 150));
+if (cardManagerSearchClear) cardManagerSearchClear.addEventListener('click', () => {
+  cardManagerSearch.value = '';
+  renderCardManager();
+  cardManagerSearch.focus();
+});
+const cardManagerAdd = document.getElementById('card-manager-add');
+if (cardManagerAdd) cardManagerAdd.addEventListener('click', () => openCardEditor());
+const cardManagerEmptyAdd = document.getElementById('card-manager-empty-add');
+if (cardManagerEmptyAdd) cardManagerEmptyAdd.addEventListener('click', () => openCardEditor());
+const cardEditorClose = document.getElementById('card-editor-close');
+if (cardEditorClose) cardEditorClose.addEventListener('click', closeCardEditor);
+const cardEditorSave = document.getElementById('card-editor-save');
+if (cardEditorSave) cardEditorSave.addEventListener('click', saveCardEditor);
+if (cardEditorDuplicate) cardEditorDuplicate.addEventListener('click', duplicateCardEditor);
+if (cardEditorDelete) cardEditorDelete.addEventListener('click', deleteCardEditor);
+if (cardEditorModal) {
+  cardEditorModal.addEventListener('click', event => {
+    if (event.target === cardEditorModal) closeCardEditor();
+  });
+}
+
+function renderHiddenDecks(hiddenDecks) {
+  const wrap = document.getElementById('hidden-decks');
+  wrap.innerHTML = '';
+  if (!hiddenDecks.length) return;
+
+  const details = document.createElement('details');
+  details.className = 'hidden-decks-box';
+  const summary = document.createElement('summary');
+  summary.textContent = `Hidden decks (${hiddenDecks.length})`;
+  details.appendChild(summary);
+
+  for (const d of hiddenDecks) {
+    const row = document.createElement('div');
+    row.className = 'hidden-deck-row';
+    const name = document.createElement('span');
+    name.className = 'hidden-deck-name';
+    name.textContent = `${d.name} (${d.cards.length})`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn small';
+    btn.textContent = 'Unhide';
+    btn.addEventListener('click', () => setDeckHidden(d.id, false));
+    row.appendChild(name);
+    row.appendChild(btn);
+    details.appendChild(row);
+  }
+  wrap.appendChild(details);
+}
+
+function updateFlaggedTotal() {
+  const total = state.decks.filter(d => !d.hidden).reduce((n, d) => n + d.cards.filter(c => c.flagged).length, 0);
+  const badge = document.getElementById('flagged-total');
+  badge.textContent = total ? `${total}` : '';
+  const row = document.getElementById('only-flagged-row');
+  const box = document.getElementById('only-flagged');
+  if (total === 0) { box.checked = false; row.classList.add('disabled'); box.disabled = true; }
+  else { row.classList.remove('disabled'); box.disabled = false; }
+}
+
+document.getElementById('select-all-btn').addEventListener('click', () => {
+  const boxes = deckListEl.querySelectorAll('input[type=checkbox]:not(:disabled)');
+  const allChecked = [...boxes].every(b => b.checked);
+  boxes.forEach(b => { b.checked = !allChecked; });
+  refreshStudyEligibility();
+});
+
+deckListEl.addEventListener('change', event => {
+  if (hasStudyModePicker && studyMode !== 'flashcards' &&
+      event.target.matches('input[type=checkbox]') && event.target.checked) {
+    deckListEl.querySelectorAll('input[type=checkbox]:checked').forEach(box => {
+      if (box !== event.target) box.checked = false;
+    });
+  }
+  refreshStudyEligibility();
+});
+document.getElementById('only-flagged').addEventListener('change', refreshStudyEligibility);
+
+if (startModeBtn) startModeBtn.addEventListener('click', () => {
+  if (studyMode === 'matching') {
+    startMatchGame();
+    return;
+  }
+  if (studyMode === 'multiple-choice') {
+    startChoiceGame();
+    return;
+  }
+  const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
+  if (ids.length === 0) { alert('Select at least one deck to study.'); return; }
+  const onlyFlagged = document.getElementById('only-flagged').checked;
+  startStudy(ids, onlyFlagged);
+});
+
+const legacyStudyBtn = document.getElementById('start-study-btn');
+if (legacyStudyBtn) legacyStudyBtn.addEventListener('click', () => {
+  const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
+  if (ids.length === 0) { alert('Select at least one deck to study.'); return; }
+  startStudy(ids, document.getElementById('only-flagged').checked);
+});
+
+document.getElementById('back-to-decks').addEventListener('click', openDeckPicker);
+document.getElementById('match-back-to-decks').addEventListener('click', openDeckPicker);
+const choiceBackBtn = document.getElementById('choice-back-to-decks');
+if (choiceBackBtn) choiceBackBtn.addEventListener('click', openDeckPicker);
+
+// Search every deck's questions AND answers, then study the matches as a custom set.
+document.getElementById('search-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const term = document.getElementById('search-input').value.trim();
+  const statusEl = document.getElementById('search-status');
+  if (!term) { statusEl.textContent = ''; return; }
+  const needle = term.toLowerCase();
+  const matches = [];
+  for (const d of state.decks) {
+    if (d.hidden) continue;
+    for (const c of d.cards) {
+      if (c.q.toLowerCase().includes(needle) || c.a.toLowerCase().includes(needle)) matches.push(c);
+    }
+  }
+  if (matches.length === 0) {
+    statusEl.textContent = `No cards match “${term}”.`;
+    return;
+  }
+  statusEl.textContent = '';
+  studyDeckIds = [];
+  const reverse = document.getElementById('reverse-mode').checked;
+  beginSession(matches, `Search “${term}” · ${matches.length} card${matches.length === 1 ? '' : 's'}`, reverse);
+});
+
+function startStudy(ids, onlyFlagged) {
+  studyDeckIds = ids;
+  const selected = state.decks.filter(d => ids.includes(d.id));
+  let cards = selected.flatMap(d => d.cards);
+  if (onlyFlagged) cards = cards.filter(c => c.flagged);
+
+  if (cards.length === 0) {
+    alert(onlyFlagged
+      ? 'No flagged cards in the selected deck(s). Flag some cards while studying first.'
+      : 'The selected deck(s) have no cards.');
+    return;
+  }
+
+  const scope = onlyFlagged ? 'flagged · ' : '';
+  const label = selected.length === 1
+    ? `${selected[0].name} · ${scope}${cards.length} cards`
+    : `${selected.length} decks · ${scope}${cards.length} cards`;
+  const reverse = document.getElementById('reverse-mode').checked;
+  beginSession(cards, label, reverse);
+}
+
+// Shared entry point for deck-based, flagged, search, and resumed sessions.
+function beginSession(cards, label, reverse, resumePosition = 0) {
+  studyCards = cards;
+  currentStudyLabel = label;
+  reverseMode = !!reverse;
+  document.getElementById('study-deck-label').textContent =
+    (reverseMode ? '↔ ' : '') + label;
+  document.getElementById('front-label').textContent = reverseMode ? 'Answer' : 'Question';
+  document.getElementById('back-label').textContent = reverseMode ? 'Question' : 'Answer';
+  buildOrder(false);
+  pos = Math.max(0, Math.min(resumePosition, order.length - 1));
+  deckPicker.classList.add('hidden');
+  if (cardManager) cardManager.classList.add('hidden');
+  studyArea.classList.remove('hidden');
+  startTimer();
+  showCard();
+}
+
+/* ---------- Study: card engine ---------- */
+const cardEl = document.getElementById('card');
+const questionEl = document.getElementById('card-question');
+const answerEl = document.getElementById('card-answer');
+const progressText = document.getElementById('progress-text');
+const progressFill = document.getElementById('progress-fill');
+const flagCheck = document.getElementById('flag-check');
+const studyEditCardBtn = document.getElementById('study-edit-card');
+if (studyEditCardBtn) studyEditCardBtn.classList.remove('hidden');
+
+function openStudyCardEditor() {
+  if (!studyCards.length || !order.length) return;
+  const location = findCardLocation(studyCards[order[pos]]);
+  if (!location) {
+    toast('This card is no longer available to edit.');
+    return;
+  }
+  cardManagerDeckId = location.deck.id;
+  openCardEditor(location.index, 'study');
+}
+
+if (studyEditCardBtn) studyEditCardBtn.addEventListener('click', openStudyCardEditor);
+
+/* ---------- Rich card renderer (safe subset: bold/italic/colors/shapes/flags) ---------- */
+const NAMED_COLORS = {
+  red: '#ef4444', orange: '#f97316', yellow: '#eab308', green: '#22c55e',
+  blue: '#3b82f6', indigo: '#4f46e5', purple: '#8b5cf6', violet: '#8b5cf6',
+  pink: '#ec4899', magenta: '#d946ef', brown: '#92400e', black: '#111111',
+  white: '#f8fafc', gray: '#6b7280', grey: '#6b7280', cyan: '#06b6d4',
+  teal: '#14b8a6', lime: '#84cc16', gold: '#d4af37', silver: '#c0c0c0',
+  maroon: '#7f1d1d', navy: '#1e3a8a',
+};
+function safeColor(c) {
+  if (!c) return null;
+  c = String(c).trim().toLowerCase();
+  if (/^#[0-9a-f]{3}$|^#[0-9a-f]{4}$|^#[0-9a-f]{6}$|^#[0-9a-f]{8}$/.test(c)) return c;
+  if (NAMED_COLORS[c]) return NAMED_COLORS[c];
+  return null;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+const SHAPE_PATHS = {
+  circle: '<circle cx="50" cy="50" r="45"/>',
+  square: '<rect x="7" y="7" width="86" height="86" rx="6"/>',
+  rectangle: '<rect x="4" y="24" width="92" height="52" rx="6"/>',
+  oval: '<ellipse cx="50" cy="50" rx="46" ry="32"/>',
+  triangle: '<polygon points="50,8 92,90 8,90"/>',
+  diamond: '<polygon points="50,5 92,50 50,95 8,50"/>',
+  pentagon: '<polygon points="50,6 94,39 77,92 23,92 6,39"/>',
+  hexagon: '<polygon points="27,8 73,8 96,50 73,92 27,92 4,50"/>',
+  star: '<polygon points="50,5 61,38 96,38 68,59 79,93 50,72 21,93 32,59 4,38 39,38"/>',
+  heart: '<path d="M50 84 C 10 54 12 22 34 22 C 45 22 50 31 50 31 C 50 31 55 22 66 22 C 88 22 90 54 50 84 Z"/>',
+};
+function shapeSVG(kind, color, size) {
+  const body = SHAPE_PATHS[String(kind).trim().toLowerCase()] || SHAPE_PATHS.circle;
+  const s = Math.max(12, Math.min(400, Number(size) || 96));
+  const fill = safeColor(color) || 'currentColor';
+  return `<svg class="card-shape" viewBox="0 0 100 100" width="${s}" height="${s}" ` +
+    `fill="${fill}" stroke="rgba(120,120,120,0.35)" stroke-width="1" aria-hidden="true">${body}</svg>`;
+}
+function flagEmoji(code) {
+  const region = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(region)) return '';
+  return String.fromCodePoint(...[...region].map(letter => 0x1F1E6 + letter.charCodeAt(0) - 65));
+}
+let nativeFlagEmojiSupport = null;
+function supportsNativeFlagEmoji() {
+  if (nativeFlagEmojiSupport !== null) return nativeFlagEmojiSupport;
+  const canvas = document.createElement('canvas');
+  canvas.width = 96;
+  canvas.height = 72;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return (nativeFlagEmojiSupport = false);
+  ctx.font = '64px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  ctx.textBaseline = 'top';
+  ctx.fillText(flagEmoji('US'), 0, 0);
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let colored = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3] > 32 &&
+        Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) -
+        Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) > 28) {
+      colored++;
+    }
+  }
+  nativeFlagEmojiSupport = colored > 20;
+  return nativeFlagEmojiSupport;
+}
+function flagSpan(code) {
+  const region = String(code || '').trim().toUpperCase();
+  const emoji = flagEmoji(region);
+  if (!emoji) return escapeHtml(`{{flag:${code}}}`);
+  if (supportsNativeFlagEmoji()) {
+    return `<span class="card-flag card-flag-emoji" aria-hidden="true">${emoji}</span>`;
+  }
+  return `<img class="card-flag card-flag-image" src="./flags/${region.toLowerCase()}.svg" ` +
+    `width="160" height="120" alt="" aria-hidden="true">`;
+}
+
+const MUSIC_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const MUSIC_BASE_NOTES = {
+  treble: { letter: 'E', octave: 4 },
+  bass: { letter: 'G', octave: 2 },
+};
+const MUSIC_RHYTHM_NAMES = {
+  w: 'whole note', h: 'half note', q: 'quarter note', e: 'eighth note', s: 'sixteenth note',
+  wr: 'whole rest', hr: 'half rest', qr: 'quarter rest', er: 'eighth rest', sr: 'sixteenth rest',
+};
+
+function parseMusicPitch(value) {
+  const match = /^([A-Ga-g])([#bn]?)([0-8])$/.exec(String(value || '').trim());
+  if (!match) return null;
+  return { letter: match[1].toUpperCase(), accidental: match[2], octave: Number(match[3]) };
+}
+
+function musicDiatonicIndex(pitch) {
+  return pitch.octave * 7 + MUSIC_LETTERS.indexOf(pitch.letter);
+}
+
+function musicAccidentalGlyph(accidental) {
+  return accidental === '#' ? '♯' : accidental === 'b' ? '♭' : accidental === 'n' ? '♮' : '';
+}
+
+function musicPitchLabel(pitch) {
+  return `${pitch.letter}${musicAccidentalGlyph(pitch.accidental)}${pitch.octave}`;
+}
+
+function musicClefGlyph(clef) {
+  return clef === 'bass' ? '𝄢' : '𝄞';
+}
+
+function musicStaffPosition(pitch, clef) {
+  const base = MUSIC_BASE_NOTES[clef];
+  if (!base) return 'unknown staff position';
+  const offset = musicDiatonicIndex(pitch) -
+    (base.octave * 7 + MUSIC_LETTERS.indexOf(base.letter));
+  let position;
+  if (offset >= 0 && offset <= 8) {
+    position = offset % 2 === 0
+      ? `line ${Math.floor(offset / 2) + 1} from the bottom`
+      : `space ${Math.floor(offset / 2) + 1} from the bottom`;
+  } else if (offset < 0) {
+    const distance = -offset;
+    position = distance % 2 === 0
+      ? `ledger line ${distance / 2} below the staff`
+      : distance === 1 ? 'the space immediately below the staff'
+        : `the space below ledger line ${Math.floor(distance / 2)} below the staff`;
+  } else {
+    const distance = offset - 8;
+    position = distance % 2 === 0
+      ? `ledger line ${distance / 2} above the staff`
+      : distance === 1 ? 'the space immediately above the staff'
+        : `the space above ledger line ${Math.floor(distance / 2)} above the staff`;
+  }
+  const accidental = pitch.accidental
+    ? ` with a ${pitch.accidental === '#' ? 'sharp' : pitch.accidental === 'b' ? 'flat' : 'natural'} sign`
+    : '';
+  return `${position}${accidental}`;
+}
+
+function musicStaffLines(top, spacing, left = 28, right = 174) {
+  return Array.from({ length: 5 }, (_, index) => {
+    const y = top + index * spacing;
+    return `<line x1="${left}" y1="${y}" x2="${right}" y2="${y}"/>`;
+  }).join('');
+}
+
+function musicLedgerLines(y, top, bottom, spacing, x) {
+  let markup = '';
+  if (y > bottom) {
+    for (let lineY = bottom + spacing; lineY <= y + 0.5; lineY += spacing) {
+      markup += `<line x1="${x - 13}" y1="${lineY}" x2="${x + 13}" y2="${lineY}"/>`;
+    }
+  } else if (y < top) {
+    for (let lineY = top - spacing; lineY >= y - 0.5; lineY -= spacing) {
+      markup += `<line x1="${x - 13}" y1="${lineY}" x2="${x + 13}" y2="${lineY}"/>`;
+    }
+  }
+  return markup;
+}
+
+function musicPitchY(pitch, clef, bottom, halfStep) {
+  const base = MUSIC_BASE_NOTES[clef];
+  const offset = musicDiatonicIndex(pitch) -
+    (base.octave * 7 + MUSIC_LETTERS.indexOf(base.letter));
+  return bottom - offset * halfStep;
+}
+
+function musicNoteMarkup(pitch, clef, x, top, bottom, spacing, stem = true) {
+  const y = musicPitchY(pitch, clef, bottom, spacing / 2);
+  const ledger = musicLedgerLines(y, top, bottom, spacing, x);
+  const accidental = musicAccidentalGlyph(pitch.accidental);
+  const accidentalMarkup = accidental
+    ? `<text class="music-accidental" x="${x - 24}" y="${y + 7}">${accidental}</text>`
+    : '';
+  const stemMarkup = !stem ? '' : y >= (top + bottom) / 2
+    ? `<line x1="${x + 7}" y1="${y}" x2="${x + 7}" y2="${y - 34}"/>`
+    : `<line x1="${x - 7}" y1="${y}" x2="${x - 7}" y2="${y + 34}"/>`;
+  return `${ledger}${accidentalMarkup}<ellipse class="music-notehead" cx="${x}" cy="${y}" rx="8" ry="5" transform="rotate(-18 ${x} ${y})"/>${stemMarkup}`;
+}
+
+function musicStaffSvg(clef, pitches, kind = 'note') {
+  if (!['treble', 'bass'].includes(clef) || !pitches.length || pitches.some(pitch => !pitch)) return '';
+  const positions = pitches.length === 1 ? [112]
+    : pitches.length === 2 ? [96, 136]
+      : pitches.map(() => 118);
+  const notes = pitches.map((pitch, index) =>
+    musicNoteMarkup(pitch, clef, positions[index], 32, 80, 12)).join('');
+  return `<svg class="card-music card-music-${kind}" viewBox="0 0 190 112" aria-hidden="true" focusable="false">` +
+    `<g class="music-lines">${musicStaffLines(32, 12)}</g>` +
+    `<text class="music-clef" x="8" y="${clef === 'bass' ? 72 : 76}">${musicClefGlyph(clef)}</text>` +
+    `<g class="music-notes">${notes}</g></svg>`;
+}
+
+function musicGrandStaffSvg(clef, pitch) {
+  if (!['treble', 'bass'].includes(clef) || !pitch) return '';
+  const top = clef === 'treble' ? 35 : 95;
+  const bottom = clef === 'treble' ? 75 : 135;
+  const note = musicNoteMarkup(pitch, clef, 132, top, bottom, 10);
+  return `<svg class="card-music card-music-grand" viewBox="0 0 200 170" aria-hidden="true" focusable="false">` +
+    `<g class="music-lines">${musicStaffLines(35, 10, 36, 184)}${musicStaffLines(95, 10, 36, 184)}` +
+    `<path d="M28 35 Q18 35 18 46 L18 124 Q18 135 28 135"/></g>` +
+    `<text class="music-clef" x="36" y="76">𝄞</text><text class="music-clef" x="38" y="133">𝄢</text>` +
+    `<g class="music-notes">${note}</g></svg>`;
+}
+
+function musicKeySignatureSvg(clef, count, mode) {
+  if (!['treble', 'bass'].includes(clef) || !Number.isInteger(count) || Math.abs(count) > 7) return '';
+  const sharpPitches = clef === 'treble'
+    ? ['F5', 'C5', 'G5', 'D5', 'A4', 'E5', 'B4']
+    : ['F3', 'C3', 'G3', 'D3', 'A2', 'E3', 'B2'];
+  const flatPitches = clef === 'treble'
+    ? ['B4', 'E5', 'A4', 'D5', 'G4', 'C5', 'F4']
+    : ['B2', 'E3', 'A2', 'D3', 'G2', 'C3', 'F2'];
+  const pitches = (count > 0 ? sharpPitches : flatPitches).slice(0, Math.abs(count));
+  const glyph = count > 0 ? '♯' : '♭';
+  const accidentals = pitches.map((value, index) => {
+    const pitch = parseMusicPitch(value);
+    const y = musicPitchY(pitch, clef, 80, 6);
+    return `<text class="music-key-accidental" x="${76 + index * 13}" y="${y + 7}">${glyph}</text>`;
+  }).join('');
+  const prompt = ['major', 'minor'].includes(mode)
+    ? `<text class="music-key-prompt" x="95" y="16">${mode.toUpperCase()} KEY?</text>`
+    : '';
+  return `<svg class="card-music card-music-key" viewBox="0 0 190 112" aria-hidden="true" focusable="false">` +
+    prompt +
+    `<g class="music-lines">${musicStaffLines(32, 12)}<line x1="166" y1="32" x2="166" y2="80"/></g>` +
+    `<text class="music-clef" x="8" y="${clef === 'bass' ? 72 : 76}">${musicClefGlyph(clef)}</text>` +
+    accidentals + `</svg>`;
+}
+
+function musicTimeSignatureSvg(parts) {
+  const first = parts[0];
+  const special = first === 'common' || first === 'cut';
+  let signature;
+  if (special) {
+    signature = first === 'common'
+      ? '<text class="music-common-time" x="104" y="72">C</text>'
+      : '<text class="music-common-time" x="104" y="72">C</text><line x1="119" y1="38" x2="119" y2="82"/>';
+  } else {
+    const top = Number(first);
+    const bottom = Number(parts[1]);
+    if (!Number.isInteger(top) || ![2, 4, 8].includes(bottom) || top < 1 || top > 12) return '';
+    signature = `<text class="music-time-number" x="108" y="56">${top}</text>` +
+      `<text class="music-time-number" x="108" y="82">${bottom}</text>`;
+  }
+  return `<svg class="card-music card-music-time" viewBox="0 0 190 112" aria-hidden="true" focusable="false">` +
+    `<g class="music-lines">${musicStaffLines(32, 12)}</g><text class="music-clef" x="8" y="76">𝄞</text>` +
+    signature + `</svg>`;
+}
+
+function musicRhythmMarkup(code, x) {
+  if (!MUSIC_RHYTHM_NAMES[code]) return '';
+  const note = !code.endsWith('r');
+  if (note) {
+    const filled = !['w', 'h'].includes(code);
+    const head = `<ellipse class="music-rhythm-head${filled ? ' filled' : ''}" cx="${x}" cy="62" rx="8" ry="5" transform="rotate(-18 ${x} 62)"/>`;
+    if (code === 'w') return head;
+    let markup = `${head}<line x1="${x + 7}" y1="62" x2="${x + 7}" y2="28"/>`;
+    if (code === 'e' || code === 's') {
+      markup += `<path d="M${x + 7} 28 Q${x + 24} 34 ${x + 16} 47"/>`;
+    }
+    if (code === 's') {
+      markup += `<path d="M${x + 7} 38 Q${x + 24} 44 ${x + 16} 57"/>`;
+    }
+    return markup;
+  }
+  if (code === 'wr') return `<rect class="music-rest" x="${x - 8}" y="44" width="16" height="6"/>`;
+  if (code === 'hr') return `<rect class="music-rest" x="${x - 8}" y="50" width="16" height="6"/>`;
+  if (code === 'qr') return `<path class="music-rest-path" d="M${x + 4} 30 L${x - 5} 45 L${x + 5} 54 L${x - 3} 70 L${x + 8} 79"/>`;
+  const secondFlag = code === 'sr'
+    ? `<path class="music-rest-path" d="M${x} 49 Q${x + 16} 43 ${x + 9} 58"/>`
+    : '';
+  return `<line class="music-rest-path" x1="${x}" y1="30" x2="${x}" y2="73"/>` +
+    `<path class="music-rest-path" d="M${x} 37 Q${x + 16} 31 ${x + 9} 47"/>${secondFlag}`;
+}
+
+function musicRhythmSvg(pattern) {
+  const codes = String(pattern || '').split('+');
+  if (!codes.length || codes.length > 4 || codes.some(code => !MUSIC_RHYTHM_NAMES[code])) return '';
+  const positions = codes.length === 1 ? [104]
+    : codes.map((_, index) => 64 + index * (80 / (codes.length - 1)));
+  const symbols = codes.map((code, index) => musicRhythmMarkup(code, positions[index])).join('');
+  return `<svg class="card-music card-music-rhythm" viewBox="0 0 190 104" aria-hidden="true" focusable="false">` +
+    `<g class="music-lines">${musicStaffLines(32, 12)}</g><g class="music-notes">${symbols}</g></svg>`;
+}
+
+function musicSymbolSvg(symbol) {
+  const note = '<ellipse class="music-notehead" cx="94" cy="64" rx="8" ry="5" transform="rotate(-18 94 64)"/><line x1="101" y1="64" x2="101" y2="30"/>';
+  const textSymbols = {
+    sharp: '♯', flat: '♭', natural: '♮', 'double-sharp': '𝄪', 'double-flat': '♭♭',
+    'treble-clef': '𝄞', 'bass-clef': '𝄢', piano: 'p', forte: 'f',
+    'mezzo-piano': 'mp', 'mezzo-forte': 'mf', fortissimo: 'ff',
+  };
+  let markup = '';
+  if (textSymbols[symbol]) {
+    markup = `<text class="music-symbol-text music-symbol-${symbol}" x="95" y="76">${textSymbols[symbol]}</text>`;
+  } else if (symbol === 'staff') {
+    markup = `<g class="music-lines">${musicStaffLines(30, 12, 24, 166)}</g>`;
+  } else if (symbol === 'barline' || symbol === 'double-barline') {
+    markup = `<g class="music-lines">${musicStaffLines(30, 12, 24, 166)}` +
+      `<line x1="96" y1="30" x2="96" y2="78"/>` +
+      (symbol === 'double-barline' ? '<line x1="104" y1="30" x2="104" y2="78"/>' : '') + '</g>';
+  } else if (symbol === 'repeat-start' || symbol === 'repeat-end') {
+    const light = symbol === 'repeat-start' ? 90 : 94;
+    const heavy = symbol === 'repeat-start' ? 82 : 102;
+    markup = `<g class="music-lines">${musicStaffLines(30, 12, 24, 166)}` +
+      `<line x1="${light}" y1="30" x2="${light}" y2="78"/><line class="music-heavy-line" x1="${heavy}" y1="30" x2="${heavy}" y2="78"/>` +
+      `<circle class="music-dot" cx="${symbol === 'repeat-start' ? 102 : 80}" cy="48" r="3"/>` +
+      `<circle class="music-dot" cx="${symbol === 'repeat-start' ? 102 : 80}" cy="60" r="3"/></g>`;
+  } else if (symbol === 'fermata') {
+    markup = `${note}<path class="music-symbol-path" d="M67 49 Q94 18 121 49"/><circle class="music-dot" cx="94" cy="43" r="4"/>`;
+  } else if (symbol === 'crescendo' || symbol === 'decrescendo') {
+    markup = symbol === 'crescendo'
+      ? '<path class="music-symbol-path" d="M50 54 L140 30 M50 54 L140 78"/>'
+      : '<path class="music-symbol-path" d="M50 30 L140 54 M50 78 L140 54"/>';
+  } else if (['staccato', 'accent', 'tenuto'].includes(symbol)) {
+    const articulation = symbol === 'staccato'
+      ? '<circle class="music-dot" cx="94" cy="82" r="4"/>'
+      : symbol === 'accent'
+        ? '<path class="music-symbol-path" d="M76 80 L112 88 L76 96"/>'
+        : '<line class="music-symbol-path" x1="77" y1="86" x2="111" y2="86"/>';
+    markup = note + articulation;
+  } else if (symbol === 'tie' || symbol === 'slur') {
+    markup = `<ellipse class="music-notehead" cx="68" cy="64" rx="8" ry="5"/><ellipse class="music-notehead" cx="122" cy="${symbol === 'tie' ? 64 : 48}" rx="8" ry="5"/>` +
+      `<path class="music-symbol-path" d="${symbol === 'tie' ? 'M68 77 Q95 94 122 77' : 'M68 77 Q95 96 122 61'}"/>`;
+  }
+  if (!markup) return '';
+  return `<svg class="card-music card-music-symbol" viewBox="0 0 190 110" aria-hidden="true" focusable="false">${markup}</svg>`;
+}
+
+function musicAccessibleText(kind, parts) {
+  if (kind === 'note') {
+    const clef = parts[0];
+    const pitch = parseMusicPitch(parts[1]);
+    return pitch && MUSIC_BASE_NOTES[clef]
+      ? `${clef} clef note on ${musicStaffPosition(pitch, clef)}`
+      : 'Music note identification';
+  }
+  if (kind === 'grand') {
+    const clef = parts[0];
+    const pitch = parseMusicPitch(parts[1]);
+    return pitch && MUSIC_BASE_NOTES[clef]
+      ? `Grand staff, ${clef} clef note on ${musicStaffPosition(pitch, clef)}`
+      : 'Grand staff note identification';
+  }
+  if (kind === 'interval') {
+    const clef = parts[0];
+    const first = parseMusicPitch(parts[1]);
+    const second = parseMusicPitch(parts[2]);
+    return first && second && MUSIC_BASE_NOTES[clef]
+      ? `${clef} clef interval from ${musicStaffPosition(first, clef)} to ${musicStaffPosition(second, clef)}`
+      : 'Musical interval identification';
+  }
+  if (kind === 'chord') {
+    const clef = parts[0];
+    const pitches = String(parts[1] || '').split(',').map(parseMusicPitch);
+    return pitches.length && pitches.every(Boolean) && MUSIC_BASE_NOTES[clef]
+      ? `${clef} clef chord with notes on ${pitches.map(pitch => musicStaffPosition(pitch, clef)).join(', ')}`
+      : 'Chord identification';
+  }
+  if (kind === 'key') {
+    const count = Number(parts[1]);
+    const mode = ['major', 'minor'].includes(parts[2]) ? `${parts[2]} ` : '';
+    return Number.isInteger(count)
+      ? `${mode}key signature with ${count === 0 ? 'no sharps or flats' : `${Math.abs(count)} ${count > 0 ? 'sharps' : 'flats'}`}`
+      : 'Key signature identification';
+  }
+  if (kind === 'time') {
+    if (parts[0] === 'common') return 'Common-time symbol';
+    if (parts[0] === 'cut') return 'Cut-time symbol';
+    return `Time signature with ${parts[0]} above ${parts[1]}`;
+  }
+  if (kind === 'rhythm') {
+    const names = String(parts[0] || '').split('+').map(code => MUSIC_RHYTHM_NAMES[code]).filter(Boolean);
+    return names.length ? `Rhythm notation: ${names.join(' followed by ')}` : 'Rhythm identification';
+  }
+  if (kind === 'symbol') return `Musical symbol: ${String(parts[0] || '').replace(/-/g, ' ')}`;
+  return 'Musical notation';
+}
+
+function musicSVG(kind, parts) {
+  if (kind === 'note') return musicStaffSvg(parts[0], [parseMusicPitch(parts[1])], 'note');
+  if (kind === 'grand') return musicGrandStaffSvg(parts[0], parseMusicPitch(parts[1]));
+  if (kind === 'interval') {
+    return musicStaffSvg(parts[0], [parseMusicPitch(parts[1]), parseMusicPitch(parts[2])], 'interval');
+  }
+  if (kind === 'chord') {
+    const pitches = String(parts[1] || '').split(',').map(parseMusicPitch);
+    return musicStaffSvg(parts[0], pitches, 'chord');
+  }
+  if (kind === 'key') return musicKeySignatureSvg(parts[0], Number(parts[1]), parts[2]);
+  if (kind === 'time') return musicTimeSignatureSvg(parts);
+  if (kind === 'rhythm') return musicRhythmSvg(parts[0]);
+  if (kind === 'symbol') return musicSymbolSvg(parts[0]);
+  return '';
+}
+
+function inlineMd(s) {
+  return s
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<u>$1</u>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+function renderToken(inner) {
+  const segs = inner.split('|');
+  const head = segs[0].split(':');
+  const type = head[0].trim().toLowerCase();
+  if (type === 'shape') {
+    return shapeSVG(head[1] || 'circle', segs[1] || '', segs[2] || '');
+  }
+  if (type === 'flag') {
+    return flagSpan(head[1] || '');
+  }
+  if (type === 'music') {
+    return musicSVG(head[1] || '', segs.slice(1)) || escapeHtml('{{' + inner + '}}');
+  }
+  if (type === 'explain') {
+    return `<span class="card-explanation">${inlineMd(escapeHtml(segs.slice(1).join('|')))}</span>`;
+  }
+  if (type === 'c' || type === 'color') {
+    const color = safeColor(head[1] || '');
+    const txt = inlineMd(escapeHtml(segs.slice(1).join('|')));
+    return color ? `<span style="color:${color}">${txt}</span>` : txt;
+  }
+  return escapeHtml('{{' + inner + '}}');
+}
+function renderInline(raw) {
+  let out = '';
+  for (const part of raw.split(/(\{\{[^}]*\}\})/g)) {
+    const m = part.match(/^\{\{([^}]*)\}\}$/);
+    out += m ? renderToken(m[1]) : inlineMd(escapeHtml(part));
+  }
+  return out;
+}
+// Split on top-level ';' used as a list separator. Semicolons inside {{...}}
+// tokens are ignored, and '\;' is an escape for a literal semicolon (handy for
+// grammar/punctuation cards, which are about the only place a semicolon appears).
+function splitListItems(s, preserveEscapedSemicolons = false) {
+  const parts = [];
+  let buf = '', depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\' && s[i + 1] === ';') {
+      buf += preserveEscapedSemicolons ? '\\;' : ';';
+      i++;
+      continue;
+    }
+    if (ch === '{' && s[i + 1] === '{') { depth++; buf += '{{'; i++; continue; }
+    if (ch === '}' && s[i + 1] === '}') { if (depth > 0) depth--; buf += '}}'; i++; continue; }
+    if (ch === ';' && depth === 0) { parts.push(buf); buf = ''; continue; }
+    buf += ch;
+  }
+  parts.push(buf);
+  return parts;
+}
+function renderRich(el, text) {
+  const raw = text == null ? '' : String(text);
+  if (!/[*_\n;\\]|\{\{/.test(raw)) { el.textContent = raw; return; }
+  const items = splitListItems(raw).map(s => s.trim()).filter(s => s.length);
+  if (items.length > 1) {
+    el.innerHTML = '<span class="card-list">' +
+      items.map(it => '<span class="card-li">' + renderInline(it) + '</span>').join('') +
+      '</span>';
+    return;
+  }
+  el.innerHTML = renderInline(items.length ? items[0] : raw);
+}
+
+/* ---------- Study: matching-pairs game ---------- */
+const MATCH_SIZE = 5;
+const matchBoard = document.getElementById('match-board');
+const matchStatus = document.getElementById('match-status');
+const matchProgress = document.getElementById('match-progress');
+const legacyMatchStartBtn = document.getElementById('start-match-btn');
+const legacyMatchEligibility = document.getElementById('match-eligibility');
+let matchMeasureEl = null;
+
+function shuffled(items) {
+  const result = items.slice();
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function normalizeMatchValue(value) {
+  return String(value ?? '')
+    .replace(/\{\{explain\|[^}]*\}\}/gi, '')
+    .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/__/g, '')
+    .replace(/\\;/g, ';')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function getMatchMeasureEl() {
+  if (matchMeasureEl) return matchMeasureEl;
+  matchMeasureEl = document.createElement('button');
+  matchMeasureEl.type = 'button';
+  matchMeasureEl.className = 'match-tile match-measurer';
+  matchMeasureEl.setAttribute('aria-hidden', 'true');
+  matchMeasureEl.tabIndex = -1;
+  document.body.appendChild(matchMeasureEl);
+  return matchMeasureEl;
+}
+
+function matchSideFits(text) {
+  const el = getMatchMeasureEl();
+  const contentWidth = Math.min(window.innerWidth || 320, 640);
+  el.style.width = `${Math.max(120, (contentWidth - 41) / 2)}px`;
+  renderRich(el, text);
+  return el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1;
+}
+
+function getMatchEligibleCards(cards) {
+  return cards.filter(card =>
+    normalizeMatchValue(card.q) &&
+    normalizeMatchValue(card.a) &&
+    matchSideFits(card.q) &&
+    matchSideFits(compactAnswerText(card.a)));
+}
+
+function wrapMatchCards(cards) {
+  return cards.map((card, index) => ({
+    card,
+    id: `pair-${index}-${Math.random().toString(36).slice(2, 8)}`,
+    qKey: normalizeMatchValue(card.q),
+    aKey: normalizeMatchValue(card.a),
+  }));
+}
+
+function compactAnswerText(value) {
+  return String(value ?? '').replace(/\{\{explain\|[^}]*\}\}/gi, '').trim();
+}
+
+// A round is a matching in a question-to-answer bipartite graph: no two
+// selected cards may share a visible question or answer.
+function pickConflictFreeGroup(cards, limit = MATCH_SIZE) {
+  const byQuestion = new Map();
+  for (const item of shuffled(cards)) {
+    if (!byQuestion.has(item.qKey)) byQuestion.set(item.qKey, []);
+    byQuestion.get(item.qKey).push(item);
+  }
+
+  const matchByAnswer = new Map();
+  const tryQuestion = (qKey, seenAnswers) => {
+    for (const item of shuffled(byQuestion.get(qKey) || [])) {
+      if (seenAnswers.has(item.aKey)) continue;
+      seenAnswers.add(item.aKey);
+      const current = matchByAnswer.get(item.aKey);
+      if (!current || tryQuestion(current.qKey, seenAnswers)) {
+        matchByAnswer.set(item.aKey, item);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (const qKey of shuffled([...byQuestion.keys()])) {
+    tryQuestion(qKey, new Set());
+    if (matchByAnswer.size >= limit) break;
+  }
+  return shuffled([...matchByAnswer.values()]).slice(0, limit);
+}
+
+function buildMatchRounds(cards) {
+  let remaining = wrapMatchCards(cards);
+  const rounds = [];
+  while (remaining.length >= MATCH_SIZE) {
+    const round = pickConflictFreeGroup(remaining);
+    if (round.length < MATCH_SIZE) break;
+    rounds.push(round);
+    const used = new Set(round.map(item => item.id));
+    remaining = remaining.filter(item => !used.has(item.id));
+  }
+  return rounds;
+}
+
+function selectedMatchSource() {
+  const ids = [...deckListEl.querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
+  if (ids.length !== 1) return { ids, deck: null, cards: [] };
+  const deck = state.decks.find(d => d.id === ids[0]);
+  if (!deck) return { ids, deck: null, cards: [] };
+  const onlyFlagged = document.getElementById('only-flagged').checked;
+  const cards = onlyFlagged ? deck.cards.filter(card => card.flagged) : deck.cards;
+  return { ids, deck, cards, onlyFlagged };
+}
+
+function getMatchAvailability() {
+  const source = selectedMatchSource();
+  if (!source.deck) return { source, eligible: [], rounds: [] };
+  const eligible = getMatchEligibleCards(source.cards);
+  const rounds = buildMatchRounds(eligible);
+  return { source, eligible, rounds };
+}
+
+function refreshStudyEligibility() {
+  if (hasStudyModePicker) updateStudyEligibility();
+  else updateLegacyMatchEligibility();
+}
+
+function updateLegacyMatchEligibility() {
+  if (!legacyMatchStartBtn || !legacyMatchEligibility) return;
+  const source = selectedMatchSource();
+  legacyMatchStartBtn.disabled = true;
+  if (source.ids.length === 0) {
+    legacyMatchEligibility.textContent = 'Select one deck to see how many cards are applicable.';
+    return;
+  }
+  if (source.ids.length > 1) {
+    legacyMatchEligibility.textContent = 'Choose exactly one deck for Matching Pairs.';
+    return;
+  }
+
+  const { eligible, rounds } = getMatchAvailability();
+  const label = source.onlyFlagged ? 'flagged cards' : 'cards';
+  legacyMatchEligibility.textContent =
+    `${eligible.length} of ${source.cards.length} ${label} are applicable for Matching Pairs.`;
+  if (eligible.length < MATCH_SIZE) {
+    legacyMatchEligibility.textContent += ' At least 5 are needed.';
+    return;
+  }
+  if (!rounds.length) {
+    legacyMatchEligibility.textContent +=
+      ' Repeated questions or answers prevent a complete 5-pair round.';
+    return;
+  }
+  legacyMatchStartBtn.disabled = false;
+  legacyMatchEligibility.textContent += ' Complete groups of 5 are used.';
+}
+
+function updateStudyEligibility() {
+  if (!hasStudyModePicker) return;
+  startModeBtn.disabled = false;
+  modeEligibility.classList.toggle('hidden', studyMode === 'flashcards');
+  if (studyMode === 'flashcards') return;
+
+  const source = selectedMatchSource();
+  startModeBtn.disabled = true;
+  if (source.ids.length === 0) {
+    modeEligibility.textContent = `Select one deck to see which cards are applicable for ${
+      studyMode === 'matching' ? 'Matching Pairs' : 'Multiple Choice'}.`;
+    return;
+  }
+  if (source.ids.length > 1) {
+    modeEligibility.textContent = 'Choose exactly one deck for this study mode.';
+    return;
+  }
+
+  const label = source.onlyFlagged ? 'flagged cards' : 'cards';
+  if (studyMode === 'matching') {
+    const { eligible, rounds } = getMatchAvailability();
+    modeEligibility.textContent =
+      `${eligible.length} of ${source.cards.length} ${label} are applicable for Matching Pairs.`;
+    if (eligible.length < MATCH_SIZE) {
+      modeEligibility.textContent += ' At least 5 are needed.';
+      return;
+    }
+    if (!rounds.length) {
+      modeEligibility.textContent +=
+        ' Repeated questions or answers prevent a complete 5-pair round.';
+      return;
+    }
+    startModeBtn.disabled = false;
+    modeEligibility.textContent += ' Complete groups of 5 are used.';
+    return;
+  }
+
+  const available = getChoiceAvailability(source.cards);
+  modeEligibility.textContent =
+    `${available.questions.length} of ${source.cards.length} ${label} are applicable for Multiple Choice.`;
+  if (!available.questions.length) {
+    modeEligibility.textContent += ' More unique, fitting answer choices are needed.';
+    return;
+  }
+  startModeBtn.disabled = false;
+  modeEligibility.textContent += ' Choices are generated when the game starts.';
+}
+
+function startMatchGame() {
+  const { source, eligible, rounds } = getMatchAvailability();
+  if (eligible.length < MATCH_SIZE || !rounds.length) {
+    updateStudyEligibility();
+    return;
+  }
+
+  const playableCount = rounds.length * MATCH_SIZE;
+  studyDeckIds = source.ids;
+  matchRounds = rounds;
+  matchRoundIndex = 0;
+  matchSessionToken++;
+  deckPicker.classList.add('hidden');
+  studyArea.classList.add('hidden');
+  matchArea.classList.remove('hidden');
+  if (choiceArea) choiceArea.classList.add('hidden');
+  stopTimer();
+  timerEl.classList.add('hidden');
+  document.getElementById('match-deck-label').textContent =
+    `${source.deck.name} · ${playableCount} applicable cards`;
+  renderMatchRound();
+}
+
+function renderMatchRound() {
+  const round = matchRounds[matchRoundIndex];
+  matchFirstTile = null;
+  matchLocked = false;
+  matchRoundMatched = 0;
+  matchBoard.innerHTML = '';
+  matchStatus.textContent = 'Match each question with its answer.';
+  matchProgress.textContent = `Round ${matchRoundIndex + 1} of ${matchRounds.length} · 0 / ${round.length}`;
+
+  const questionTiles = shuffled(round.map(item => ({ item, side: 'q', text: item.card.q })));
+  const answerTiles = shuffled(round.map(item => ({
+    item,
+    side: 'a',
+    text: compactAnswerText(item.card.a),
+  })));
+  const questionHead = document.createElement('div');
+  questionHead.className = 'match-column-head';
+  questionHead.textContent = 'Question';
+  const answerHead = document.createElement('div');
+  answerHead.className = 'match-column-head';
+  answerHead.textContent = 'Answer';
+  matchBoard.appendChild(questionHead);
+  matchBoard.appendChild(answerHead);
+
+  for (let i = 0; i < round.length; i++) {
+    for (const tile of [questionTiles[i], answerTiles[i]]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'match-tile';
+      button.dataset.pairId = tile.item.id;
+      button.dataset.side = tile.side;
+      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-label', `${tile.side === 'q' ? 'Question' : 'Answer'}: ${accessibleRichText(tile.text)}`);
+      renderRich(button, tile.text);
+      button.addEventListener('click', () => chooseMatchTile(button));
+      matchBoard.appendChild(button);
+    }
+  }
+}
+
+function chooseMatchTile(tile) {
+  if (matchLocked || tile.classList.contains('matched')) return;
+  if (matchFirstTile === tile) {
+    tile.classList.remove('selected');
+    tile.setAttribute('aria-pressed', 'false');
+    matchFirstTile = null;
+    return;
+  }
+
+  tile.classList.add('selected');
+  tile.setAttribute('aria-pressed', 'true');
+  if (!matchFirstTile) {
+    matchFirstTile = tile;
+    return;
+  }
+
+  const first = matchFirstTile;
+  matchFirstTile = null;
+  matchLocked = true;
+  const token = matchSessionToken;
+  const correct = first.dataset.pairId === tile.dataset.pairId &&
+    first.dataset.side !== tile.dataset.side;
+
+  if (correct) {
+    playCorrectMatch();
+    matchRoundMatched++;
+    matchStatus.textContent = 'Correct pair!';
+    matchProgress.textContent =
+      `Round ${matchRoundIndex + 1} of ${matchRounds.length} · ${matchRoundMatched} / ${matchRounds[matchRoundIndex].length}`;
+    first.classList.remove('selected');
+    tile.classList.remove('selected');
+    first.classList.add('matched');
+    tile.classList.add('matched');
+    first.disabled = true;
+    tile.disabled = true;
+
+    const roundComplete = matchRoundMatched === matchRounds[matchRoundIndex].length;
+    setTimeout(() => {
+      if (token !== matchSessionToken) return;
+      if (roundComplete) {
+        matchRoundIndex++;
+        if (matchRoundIndex < matchRounds.length) renderMatchRound();
+        else renderMatchComplete();
+      } else {
+        matchLocked = false;
+        matchStatus.textContent = 'Keep going!';
+      }
+    }, roundComplete ? 700 : 350);
+    return;
+  }
+
+  playIncorrectMatch();
+  matchStatus.textContent = 'Not a match. Try again.';
+  first.classList.add('wrong');
+  tile.classList.add('wrong');
+  setTimeout(() => {
+    if (token !== matchSessionToken) return;
+    for (const item of [first, tile]) {
+      item.classList.remove('selected', 'wrong');
+      item.setAttribute('aria-pressed', 'false');
+    }
+    matchLocked = false;
+  }, 650);
+}
+
+function renderMatchComplete() {
+  matchStatus.textContent = '';
+  matchProgress.textContent = 'Complete';
+  matchBoard.innerHTML = '';
+  const complete = document.createElement('div');
+  complete.className = 'match-complete';
+  complete.innerHTML =
+    `<h3>All pairs matched!</h3>` +
+    `<p>You completed ${matchRounds.reduce((total, round) => total + round.length, 0)} cards.</p>`;
+  const again = document.createElement('button');
+  again.type = 'button';
+  again.className = 'btn primary';
+  again.textContent = 'Play again';
+  again.addEventListener('click', startMatchGame);
+  complete.appendChild(again);
+  matchBoard.appendChild(complete);
+}
+
+if (legacyMatchStartBtn) legacyMatchStartBtn.addEventListener('click', startMatchGame);
+
+let matchResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(matchResizeTimer);
+  matchResizeTimer = setTimeout(() => {
+    if (!deckPicker.classList.contains('hidden')) {
+      refreshStudyEligibility();
+      return;
+    }
+    if (choiceArea && !choiceArea.classList.contains('hidden')) {
+      const remaining = choiceQuestions.slice(choiceQuestionIndex);
+      const stillFits = remaining.every(question =>
+        choiceQuestionFits(question.card.q) &&
+        question.options.every(option => choiceOptionFits(option.text)));
+      if (stillFits) return;
+      const questionCards = remaining.map(question => question.card);
+      const available = getChoiceAvailability(questionCards, choiceSourceCards);
+      if (available.questions.length) {
+        startChoiceGame(questionCards);
+        toast('Multiple Choice restarted to fit the new screen size.');
+      } else {
+        openDeckPicker();
+        toast('No remaining questions are applicable at this screen size.');
+      }
+      return;
+    }
+    if (matchArea.classList.contains('hidden')) return;
+    if (matchRoundIndex >= matchRounds.length) return;
+    const stillFits = matchRounds.slice(matchRoundIndex).every(round =>
+      round.every(item =>
+        matchSideFits(item.card.q) && matchSideFits(compactAnswerText(item.card.a))));
+    if (stillFits) return;
+
+    const source = selectedMatchSource();
+    const eligible = source.deck ? getMatchEligibleCards(source.cards) : [];
+    if (buildMatchRounds(eligible).length) {
+      startMatchGame();
+      toast('Matching Pairs restarted to fit the new screen size.');
+    } else {
+      openDeckPicker();
+      toast('Fewer than 5 cards are applicable at this screen size.');
+    }
+  }, 150);
+});
+
+/* ---------- Study: multiple-choice game ---------- */
+const CHOICE_SINGLE_DISTRACTORS = 3;
+const CHOICE_MULTI_DISTRACTORS = 2;
+const choiceQuestionEl = document.getElementById('choice-question');
+const choiceOptionsEl = document.getElementById('choice-options');
+const choiceInstruction = document.getElementById('choice-instruction');
+const choiceProgress = document.getElementById('choice-progress');
+const choiceStatus = document.getElementById('choice-status');
+const choiceCheckBtn = document.getElementById('choice-check-btn');
+const choiceNextBtn = document.getElementById('choice-next-btn');
+let choiceQuestionMeasureEl = null;
+let choiceOptionMeasureEl = null;
+
+function getChoiceQuestionMeasureEl() {
+  if (choiceQuestionMeasureEl) return choiceQuestionMeasureEl;
+  choiceQuestionMeasureEl = document.createElement('div');
+  choiceQuestionMeasureEl.className = 'choice-question choice-measurer';
+  choiceQuestionMeasureEl.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(choiceQuestionMeasureEl);
+  return choiceQuestionMeasureEl;
+}
+
+function getChoiceOptionMeasureEl() {
+  if (choiceOptionMeasureEl) return choiceOptionMeasureEl;
+  choiceOptionMeasureEl = document.createElement('button');
+  choiceOptionMeasureEl.type = 'button';
+  choiceOptionMeasureEl.className = 'choice-option choice-measurer';
+  choiceOptionMeasureEl.setAttribute('aria-hidden', 'true');
+  choiceOptionMeasureEl.tabIndex = -1;
+  document.body.appendChild(choiceOptionMeasureEl);
+  return choiceOptionMeasureEl;
+}
+
+function choiceQuestionFits(text) {
+  const el = getChoiceQuestionMeasureEl();
+  el.style.width = `${Math.max(240, Math.min(window.innerWidth || 320, 640) - 32)}px`;
+  el.style.height = '160px';
+  renderRich(el, text);
+  return el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1;
+}
+
+function choiceOptionFits(text) {
+  const el = getChoiceOptionMeasureEl();
+  el.style.width = `${Math.max(240, Math.min(window.innerWidth || 320, 640) - 32)}px`;
+  el.style.height = '76px';
+  renderRich(el, text);
+  return el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1;
+}
+
+function choiceAnswerItems(card) {
+  const items = splitListItems(compactAnswerText(card.a), true).map(item => item.trim()).filter(Boolean);
+  const unique = new Map();
+  for (const text of items) {
+    const key = normalizeMatchValue(text);
+    if (key && !unique.has(key)) unique.set(key, { text, key });
+  }
+  return [...unique.values()];
+}
+
+function accessibleRichText(text) {
+  return String(text ?? '')
+    .replace(/\{\{flag:[A-Z]{2}\}\}/gi, 'Flag identification question')
+    .replace(/\{\{explain\|([^}]*)\}\}/gi, '. $1')
+    .replace(/\{\{music:([^}]*)\}\}/gi, (_, token) => {
+      const segments = token.split('|');
+      return musicAccessibleText(segments[0].trim().toLowerCase(), segments.slice(1));
+    })
+    .replace(/\{\{shape:([^|}]+)\|([^|}]+)(?:\|[^}]*)?\}\}/gi, (_, shape, color) =>
+      `${color} ${shape}`)
+    .replace(/\{\{(?:c|color):[^|}]+\|([^}]*)\}\}/gi, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/__/g, '')
+    .replace(/\\;/g, ';')
+    .replace(/;/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function choiceCardData(card, requireQuestionFit) {
+  const qKey = normalizeMatchValue(card.q);
+  const correctItems = choiceAnswerItems(card);
+  if (!qKey || correctItems.length < 1 || correctItems.length > 4) return null;
+  if (requireQuestionFit && !choiceQuestionFits(card.q)) return null;
+  if (!correctItems.every(item => choiceOptionFits(item.text))) return null;
+  return { card, qKey, correctItems };
+}
+
+function getChoiceAvailability(questionCards, poolCards = questionCards) {
+  const questionMap = new Map();
+  for (const card of questionCards) {
+    const data = choiceCardData(card, true);
+    if (data && !questionMap.has(data.qKey)) questionMap.set(data.qKey, data);
+  }
+
+  const pool = [];
+  for (const card of poolCards) {
+    const data = choiceCardData(card, false);
+    if (!data) continue;
+    for (const item of data.correctItems) pool.push({ ...item, card });
+  }
+
+  const questions = [];
+  for (const data of questionMap.values()) {
+    const correctKeys = new Set(data.correctItems.map(item => item.key));
+    const distractorMap = new Map();
+    for (const item of pool) {
+      if (item.card === data.card || correctKeys.has(item.key) || distractorMap.has(item.key)) continue;
+      distractorMap.set(item.key, item);
+    }
+    const required = data.correctItems.length > 1
+      ? CHOICE_MULTI_DISTRACTORS
+      : CHOICE_SINGLE_DISTRACTORS;
+    if (distractorMap.size >= required) {
+      questions.push({ ...data, distractors: [...distractorMap.values()] });
+    }
+  }
+  return { questions };
+}
+
+function buildChoiceQuestions(questionCards, poolCards = questionCards) {
+  return shuffled(getChoiceAvailability(questionCards, poolCards).questions).map(data => {
+    const multi = data.correctItems.length > 1;
+    const distractorCount = multi ? CHOICE_MULTI_DISTRACTORS : CHOICE_SINGLE_DISTRACTORS;
+    const correctOptions = data.correctItems.map(item => ({ ...item, correct: true }));
+    const distractors = shuffled(data.distractors).slice(0, distractorCount)
+      .map(item => ({ text: item.text, key: item.key, correct: false }));
+    return {
+      card: data.card,
+      multi,
+      options: shuffled([...correctOptions, ...distractors]),
+    };
+  });
+}
+
+function startChoiceGame(questionCards = null) {
+  let sourceCards;
+  let sourceDeck;
+  if (questionCards) {
+    sourceCards = choiceSourceCards;
+    sourceDeck = choiceSourceDeck;
+  } else {
+    const source = selectedMatchSource();
+    if (!source.deck) return;
+    sourceCards = source.cards;
+    sourceDeck = source.deck;
+    questionCards = source.cards;
+  }
+
+  const questions = buildChoiceQuestions(questionCards, sourceCards);
+  if (!questions.length) {
+    refreshStudyEligibility();
+    return;
+  }
+
+  choiceSourceCards = sourceCards;
+  choiceSourceDeck = sourceDeck;
+  choiceQuestions = questions;
+  choiceCurrentQuestionCards = questions.map(question => question.card);
+  choiceQuestionIndex = 0;
+  choiceScore = 0;
+  choiceMissedCards = [];
+  choiceAnswered = false;
+  studyDeckIds = [sourceDeck.id];
+  deckPicker.classList.add('hidden');
+  studyArea.classList.add('hidden');
+  matchArea.classList.add('hidden');
+  choiceArea.classList.remove('hidden');
+  stopTimer();
+  timerEl.classList.add('hidden');
+  document.getElementById('choice-deck-label').textContent =
+    `${sourceDeck.name} · ${questions.length} applicable question${questions.length === 1 ? '' : 's'}`;
+  renderChoiceQuestion();
+}
+
+function renderChoiceQuestion() {
+  const question = choiceQuestions[choiceQuestionIndex];
+  choiceAnswered = false;
+  choiceQuestionEl.classList.remove('hidden');
+  choiceInstruction.classList.remove('hidden');
+  choiceStatus.classList.remove('success', 'error', 'hidden');
+  choiceStatus.textContent = '';
+  choiceOptionsEl.innerHTML = '';
+  choiceProgress.textContent =
+    `Question ${choiceQuestionIndex + 1} of ${choiceQuestions.length} · Score ${choiceScore}`;
+  choiceInstruction.textContent = question.multi
+    ? 'Choose every correct answer.'
+    : 'Choose one answer.';
+  renderRich(choiceQuestionEl, question.card.q);
+  choiceQuestionEl.setAttribute('aria-label', `Question: ${accessibleRichText(question.card.q)}`);
+
+  for (const option of question.options) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'choice-option';
+    button.dataset.key = option.key;
+    button.dataset.correct = String(option.correct);
+    button.dataset.label = accessibleRichText(option.text);
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', button.dataset.label);
+    renderRich(button, option.text);
+    button.addEventListener('click', () => chooseChoiceOption(button, question.multi));
+    choiceOptionsEl.appendChild(button);
+  }
+
+  choiceCheckBtn.disabled = true;
+  choiceCheckBtn.classList.remove('hidden');
+  choiceNextBtn.classList.add('hidden');
+}
+
+function chooseChoiceOption(button, multi) {
+  if (choiceAnswered) return;
+  if (!multi) {
+    choiceOptionsEl.querySelectorAll('.choice-option.selected').forEach(option => {
+      if (option !== button) {
+        option.classList.remove('selected');
+        option.setAttribute('aria-pressed', 'false');
+      }
+    });
+  }
+  const selected = button.classList.toggle('selected');
+  button.setAttribute('aria-pressed', String(selected));
+  choiceCheckBtn.disabled = !choiceOptionsEl.querySelector('.choice-option.selected');
+}
+
+function checkChoiceAnswer() {
+  if (choiceAnswered) return;
+  const buttons = [...choiceOptionsEl.querySelectorAll('.choice-option')];
+  const selected = buttons.filter(button => button.classList.contains('selected'));
+  if (!selected.length) return;
+
+  choiceAnswered = true;
+  const exact = buttons.every(button =>
+    (button.dataset.correct === 'true') === button.classList.contains('selected'));
+  if (exact) {
+    choiceScore++;
+    playCorrectMatch();
+    choiceStatus.textContent = 'Correct!';
+    choiceStatus.classList.add('success');
+  } else {
+    choiceMissedCards.push(choiceQuestions[choiceQuestionIndex].card);
+    playIncorrectMatch();
+    choiceStatus.textContent = 'Not quite. The correct choice or choices are highlighted.';
+    choiceStatus.classList.add('error');
+  }
+
+  for (const button of buttons) {
+    const correct = button.dataset.correct === 'true';
+    const picked = button.classList.contains('selected');
+    button.disabled = true;
+    if (correct && picked) {
+      button.classList.add('correct');
+      button.setAttribute('aria-label', `${button.dataset.label}, correct answer, selected`);
+    } else if (correct) {
+      button.classList.add('missed');
+      button.setAttribute('aria-label', `${button.dataset.label}, correct answer, not selected`);
+    } else if (picked) {
+      button.classList.add('incorrect');
+      button.setAttribute('aria-label', `${button.dataset.label}, incorrect answer, selected`);
+    }
+  }
+  choiceProgress.textContent =
+    `Question ${choiceQuestionIndex + 1} of ${choiceQuestions.length} · Score ${choiceScore}`;
+  choiceCheckBtn.classList.add('hidden');
+  choiceNextBtn.textContent =
+    choiceQuestionIndex === choiceQuestions.length - 1 ? 'See results' : 'Next question';
+  choiceNextBtn.classList.remove('hidden');
+}
+
+function nextChoiceQuestion() {
+  if (!choiceAnswered) return;
+  choiceQuestionIndex++;
+  if (choiceQuestionIndex >= choiceQuestions.length) renderChoiceComplete();
+  else renderChoiceQuestion();
+}
+
+function renderChoiceComplete() {
+  const total = choiceQuestions.length;
+  const percent = Math.round((choiceScore / total) * 100);
+  choiceQuestionEl.classList.add('hidden');
+  choiceInstruction.classList.add('hidden');
+  choiceStatus.classList.add('hidden');
+  choiceCheckBtn.classList.add('hidden');
+  choiceNextBtn.classList.add('hidden');
+  choiceProgress.textContent = 'Complete';
+  choiceOptionsEl.innerHTML = '';
+
+  const complete = document.createElement('div');
+  complete.className = 'choice-complete';
+  complete.innerHTML =
+    '<h3>Quiz complete!</h3>' +
+    `<div class="choice-score">${percent}%</div>` +
+    `<p>${choiceScore} of ${total} correct</p>`;
+  const actions = document.createElement('div');
+  actions.className = 'choice-complete-actions';
+  const again = document.createElement('button');
+  again.type = 'button';
+  again.className = 'btn primary';
+  again.textContent = 'Play again';
+  again.addEventListener('click', () => startChoiceGame(choiceCurrentQuestionCards.slice()));
+  actions.appendChild(again);
+  if (choiceMissedCards.length) {
+    const review = document.createElement('button');
+    review.type = 'button';
+    review.className = 'btn';
+    review.textContent = `Review ${choiceMissedCards.length} missed`;
+    review.addEventListener('click', () => startChoiceGame(choiceMissedCards.slice()));
+    actions.appendChild(review);
+  }
+  complete.appendChild(actions);
+  choiceOptionsEl.appendChild(complete);
+}
+
+if (choiceCheckBtn) choiceCheckBtn.addEventListener('click', checkChoiceAnswer);
+if (choiceNextBtn) choiceNextBtn.addEventListener('click', nextChoiceQuestion);
+
+function buildOrder(shuffle) {
+  order = studyCards.map((_, i) => i);
+  if (shuffle) {
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+  }
+  pos = 0;
+}
+
+function showCard() {
+  if (studyCards.length === 0) return;
+  if (pos >= order.length) pos = 0;
+  const card = studyCards[order[pos]];
+  cardEl.classList.remove('flipped');
+  const frontText = reverseMode ? card.a : card.q;
+  const backText = reverseMode ? card.q : card.a;
+  renderRich(questionEl, frontText);
+  renderRich(answerEl, backText);
+  cardEl.dataset.frontAccessible = accessibleRichText(frontText);
+  cardEl.dataset.backAccessible = accessibleRichText(backText);
+  cardEl.setAttribute('aria-label',
+    `${reverseMode ? 'Answer' : 'Question'}: ${cardEl.dataset.frontAccessible}. Tap to flip.`);
+  flagCheck.checked = !!card.flagged;
+  progressText.textContent = `${pos + 1} / ${order.length}`;
+  progressFill.style.width = `${((pos + 1) / order.length) * 100}%`;
+  persistStudySession();
+}
+
+flagCheck.addEventListener('change', () => {
+  if (studyCards.length === 0) return;
+  studyCards[order[pos]].flagged = flagCheck.checked;
+  save();
+  persistStudySession();
+});
+
+function flip() {
+  const showingBack = cardEl.classList.toggle('flipped');
+  const side = showingBack
+    ? (reverseMode ? 'Question' : 'Answer')
+    : (reverseMode ? 'Answer' : 'Question');
+  const accessible = showingBack
+    ? cardEl.dataset.backAccessible
+    : cardEl.dataset.frontAccessible;
+  cardEl.setAttribute('aria-label', `${side}: ${accessible}. Tap to flip.`);
+  playDing();
+}
+function next() { pos = (pos + 1) % order.length; showCard(); }
+function prev() { pos = (pos - 1 + order.length) % order.length; showCard(); }
+
+cardEl.addEventListener('click', flip);
+cardEl.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });
+document.getElementById('next-btn').addEventListener('click', next);
+document.getElementById('prev-btn').addEventListener('click', prev);
+document.getElementById('shuffle-btn').addEventListener('click', () => { buildOrder(true); showCard(); });
+
+let touchStartX = null;
+cardEl.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].clientX; }, { passive: true });
+cardEl.addEventListener('touchend', e => {
+  if (touchStartX === null) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 60) { dx < 0 ? next() : prev(); }
+  touchStartX = null;
+});
+document.addEventListener('keydown', e => {
+  if (!views.study.classList.contains('active') || studyArea.classList.contains('hidden')) return;
+  if (e.target.matches('input, textarea, select, [contenteditable="true"]') ||
+      !cardEditorModal.classList.contains('hidden')) return;
+  if (e.key === 'ArrowRight') next();
+  if (e.key === 'ArrowLeft') prev();
+});
+
+/* ============================================================
+   Preferences: sound, timer, font size
+============================================================ */
+const PREF = {
+  get sound() { return K('pref.sound'); },
+  get timer() { return K('pref.timer'); },
+  get font() { return K('pref.font'); },
+  get highContrast() { return K('pref.highContrast'); },
+  get tipsStartup() { return K('pref.tipsStartup'); },
+  get tipsNavigate() { return K('pref.tipsNavigate'); },
+  get tipIndex() { return K('pref.tipIndex'); },
+};
+function prefBool(key, def) { const v = localStorage.getItem(key); return v === null ? def : v === '1'; }
+
+/* ---- Sound: synthesized cues via Web Audio (no assets, works offline) ---- */
+let audioCtx = null;
+function playNotes(notes, type = 'sine', volume = 0.25) {
+  if (!prefBool(PREF.sound, false)) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const now = audioCtx.currentTime;
+    const lastNote = notes[notes.length - 1];
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + lastNote.at + 0.24);
+    gain.connect(audioCtx.destination);
+    const osc = audioCtx.createOscillator();
+    osc.type = type;
+    for (const note of notes) osc.frequency.setValueAtTime(note.frequency, now + note.at);
+    osc.connect(gain);
+    osc.start(now);
+    osc.stop(now + lastNote.at + 0.25);
+  } catch (e) { /* ignore audio errors */ }
+}
+function playDing() {
+  playNotes([{ frequency: 880, at: 0 }, { frequency: 1318.5, at: 0.09 }]);
+}
+function playCorrectMatch() {
+  playNotes([
+    { frequency: 659.25, at: 0 },
+    { frequency: 783.99, at: 0.08 },
+    { frequency: 1046.5, at: 0.16 },
+  ], 'sine', 0.24);
+}
+function playIncorrectMatch() {
+  playNotes([
+    { frequency: 246.94, at: 0 },
+    { frequency: 174.61, at: 0.14 },
+  ], 'triangle', 0.16);
+}
+
+/* ---- Timer: stopwatch during study, tap to pause/resume ---- */
+const timerEl = document.getElementById('timer');
+let timerInt = null, timerAcc = 0, timerLast = 0, timerRunning = false;
+
+function fmtTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+function renderTimer() { timerEl.textContent = fmtTime(timerAcc); }
+function timerTick() {
+  if (!timerRunning) return;
+  const now = Date.now();
+  timerAcc += now - timerLast;
+  timerLast = now;
+  renderTimer();
+}
+function startTimer() {
+  stopTimer();
+  timerAcc = 0;
+  if (!prefBool(PREF.timer, false)) { timerEl.classList.add('hidden'); return; }
+  timerEl.classList.remove('hidden', 'paused');
+  timerRunning = true;
+  timerLast = Date.now();
+  renderTimer();
+  timerInt = setInterval(timerTick, 250);
+}
+function stopTimer() {
+  if (timerInt) { clearInterval(timerInt); timerInt = null; }
+  timerRunning = false;
+}
+function toggleTimer() {
+  if (!prefBool(PREF.timer, false) || !timerInt) return;
+  if (timerRunning) {
+    timerTick();               // capture the final slice
+    timerRunning = false;
+    timerEl.classList.add('paused');
+  } else {
+    timerRunning = true;
+    timerLast = Date.now();    // resume without a jump
+    timerEl.classList.remove('paused');
+  }
+}
+timerEl.addEventListener('click', toggleTimer);
+
+/* ---- Font size ---- */
+function applyFont() {
+  const size = localStorage.getItem(PREF.font) || 'default';
+  document.documentElement.setAttribute('data-font', size);
+  document.querySelectorAll('#font-size .seg').forEach(b =>
+    b.classList.toggle('active', b.dataset.font === size));
+}
+
+/* ---- Wire preference controls ---- */
+function initPrefs() {
+  const sound = document.getElementById('pref-sound');
+  const timer = document.getElementById('pref-timer');
+  const highContrast = document.getElementById('pref-high-contrast');
+  sound.checked = prefBool(PREF.sound, false);
+  timer.checked = prefBool(PREF.timer, false);
+  highContrast.checked = prefBool(PREF.highContrast, false);
+  sound.addEventListener('change', () => {
+    localStorage.setItem(PREF.sound, sound.checked ? '1' : '0');
+    if (sound.checked) playDing();
+  });
+  timer.addEventListener('change', () => {
+    localStorage.setItem(PREF.timer, timer.checked ? '1' : '0');
+    const studying = !studyArea.classList.contains('hidden') &&
+      views.study.classList.contains('active');
+    if (timer.checked && studying) startTimer();
+    else if (!timer.checked) { stopTimer(); timerEl.classList.add('hidden'); }
+  });
+  highContrast.addEventListener('change', () => {
+    localStorage.setItem(PREF.highContrast, highContrast.checked ? '1' : '0');
+    applyTheme();
+  });
+  document.querySelectorAll('#font-size .seg').forEach(b =>
+    b.addEventListener('click', () => { localStorage.setItem(PREF.font, b.dataset.font); applyFont(); }));
+  applyFont();
+}
+
+/* ============================================================
+   Tips: lightbulb popup + startup + navigate toasts
+============================================================ */
+const TIPS = [
+  { ico: '👥', view: 'home',
+    title: 'Switch between profiles',
+    text: 'Tap the colored circle in the top-right to add a profile or switch users. Each profile keeps its own decks, theme, and font size — perfect for sharing one device.' },
+  { ico: '📄', view: 'edit',
+    title: 'Import a file to create a deck',
+    text: 'On the Import tab, tap “Import file” to load a Word .docx, a .csv/.txt list, or a .json deck. Review duplicate warnings before saving. Use “Export selected deck” to create a portable backup or sharing file.' },
+  { ico: '✨', view: 'edit',
+    title: 'Start with a built-in deck',
+    text: 'On the Import tab, choose from 50+ decks organized into eight categories. Select 10, 25, 50, or all available cards, then tap Generate. Nothing is added until you generate it.' },
+  { ico: '🕢', view: 'edit',
+    title: 'Practice telling time',
+    text: 'Choose “Telling Time with Analog Clocks” to practice reading clock emojis, plus questions about times one hour or 30 minutes later.' },
+  { ico: '🎼', view: 'edit',
+    title: 'Practice reading music',
+    text: 'The Music & Sight Reading collection includes treble and bass notes, grand staff, rhythm, time and key signatures, intervals, chords, and musical symbols — all rendered offline.' },
+  { ico: '🎵', view: 'study',
+    title: 'Build sight-reading skills step by step',
+    text: 'Start with a clef-note deck, then move to grand staff, rhythm, signatures, intervals, and chords. Use Matching Pairs for quick recognition and Multiple Choice for focused practice.' },
+  { ico: '💾', view: 'edit',
+    title: 'Back up or move everything',
+    text: 'On the Import tab, use “Create Backup” to save every profile, deck, preference, flag, and study position. It works offline, and the file can be kept in cloud storage for restoration on another device.' },
+  { ico: '✏️', view: 'study',
+    title: 'Edit a deck or individual card',
+    text: 'While studying Flashcards, tap “Edit card” to correct the card without losing your place. From the deck list, choose Edit to search and manage every card in that deck.' },
+  { ico: '⏯️', view: 'study',
+    title: 'Resume a study session',
+    text: 'Flashcards remembers the exact card and order when you leave. Return to the Study tab and tap Resume to continue where you stopped.' },
+  { ico: '↕️', view: 'study',
+    title: 'Reorder decks in the Study list',
+    text: 'On the Study tab, tap the three-line handle on the left of a deck. Use the up and down buttons to move it to the position you want in the list.' },
+  { ico: '👆', view: 'study',
+    title: 'Tap a card to reveal the answer',
+    text: 'While studying, tap the card to flip it and show the answer. Tap again to flip back to the question.' },
+  { ico: '👉', view: 'study',
+    title: 'Swipe to move between cards',
+    text: 'Swipe left for the next card and swipe right for the previous one. On a computer, use the ← and → arrow keys.' },
+  { ico: '🚩', view: 'study',
+    title: 'Flag tricky cards, then drill them',
+    text: 'Tick “Flag this card for review” while studying. Back on the Study picker, turn on “Only study flagged cards” to run just those.' },
+  { ico: '🔄', view: 'study',
+    title: 'Reverse mode',
+    text: 'Choose Flashcards in the Study picker, then turn on “Reverse” to see the answer first and guess the question instead. Reverse does not apply to the game modes.' },
+  { ico: '🧩', view: 'study',
+    title: 'Play Matching Pairs',
+    text: 'Choose Matching pairs on the Study tab and select one deck. Questions appear on the left and shuffled answers on the right. At least five applicable cards are needed; tap one from each column to make a pair.' },
+  { ico: '✅', view: 'study',
+    title: 'Try Multiple Choice',
+    text: 'Choose Multiple choice and select one deck. Flashcard Flurry creates fresh answer choices from that deck each time. Bulleted answers become “Choose every correct answer” questions when enough choices are applicable.' },
+  { ico: '🔍', view: 'study',
+    title: 'Study across decks',
+    text: 'Check multiple decks to study them together, or use the search box to study every matching card from all your decks at once.' },
+  { ico: '📤', view: 'study',
+    title: 'Share a deck',
+    text: 'On the Study tab, swipe a deck left (or hover it on a computer) to reveal Edit, Share, and Hide. Tap Share to send it via AirDrop, Messages, or email — or save it as a .json file.' },
+  { ico: '⏱️', view: 'study',
+    title: 'Add a timer',
+    text: 'Turn on “Show a timer while studying” in ⚙ Settings to time your session. Tap the timer to pause or resume it.' },
+  { ico: '🙈', view: 'study',
+    title: 'Hide a deck',
+    text: 'On the Study tab, swipe a deck left (or hover it on a computer) and tap Hide to remove it from your Study list without deleting it. Hidden decks appear at the bottom, ready to bring back.' },
+  { ico: '📝', view: 'edit',
+    title: 'Bulleted answers',
+    text: 'In the individual card editor, tap “• List” to add, delete, and reorder items. Lists appear there as real bullet lines, so you never need to type a bullet character. Semicolon-separated lists still work in the bulk editor.' },
+  { ico: '🎨', view: 'home',
+    title: 'Make it yours',
+    text: 'Open ⚙ Settings to change the theme, accent color, high contrast, font size, and sound — each profile has its own.' },
+];
+
+function tipItemHTML(t) {
+  return '<span class="tip-ico" aria-hidden="true">' + t.ico + '</span>' +
+    '<div class="tip-body">' +
+      '<p class="tip-title">' + escapeHtml(t.title) + '</p>' +
+      '<p class="tip-text">' + escapeHtml(t.text) + '</p>' +
+    '</div>';
+}
+
+function renderTips() {
+  const ul = document.getElementById('tips-list');
+  if (!ul) return;
+  ul.innerHTML = '';
+  for (const t of TIPS) {
+    const li = document.createElement('li');
+    li.className = 'tip-item';
+    li.innerHTML = tipItemHTML(t);
+    ul.appendChild(li);
+  }
+}
+
+function openTips() { document.getElementById('tips-modal').classList.remove('hidden'); }
+function closeTips() { document.getElementById('tips-modal').classList.add('hidden'); }
+
+/* Single rotating tip shown at startup (a different one each launch) */
+function pickStartupTip() {
+  const idx = parseInt(localStorage.getItem(PREF.tipIndex) || '0', 10) || 0;
+  const tip = TIPS[idx % TIPS.length];
+  localStorage.setItem(PREF.tipIndex, String((idx + 1) % TIPS.length));
+  return tip;
+}
+function openStartupTip() {
+  const ul = document.getElementById('startup-tip-body');
+  const li = document.createElement('li');
+  li.className = 'tip-item';
+  li.innerHTML = tipItemHTML(pickStartupTip());
+  ul.innerHTML = '';
+  ul.appendChild(li);
+  syncTipsStartupChecks();
+  document.getElementById('startup-tip-modal').classList.remove('hidden');
+}
+function closeStartupTip() { document.getElementById('startup-tip-modal').classList.add('hidden'); }
+
+function syncTipsStartupChecks() {
+  const on = prefBool(PREF.tipsStartup, true);
+  document.querySelectorAll('.tips-startup-check').forEach(c => { c.checked = on; });
+}
+function setTipsStartup(on) {
+  localStorage.setItem(PREF.tipsStartup, on ? '1' : '0');
+  syncTipsStartupChecks();
+}
+
+/* Contextual toast shown while navigating, if enabled */
+let tipToastEl = null, tipToastTimer = null;
+const navTipShown = new Set();
+function hideTipToast() {
+  if (!tipToastEl) return;
+  tipToastEl.classList.remove('show');
+  if (tipToastTimer) { clearTimeout(tipToastTimer); tipToastTimer = null; }
+}
+function showTipToast(tip) {
+  if (!tipToastEl) {
+    tipToastEl = document.createElement('div');
+    tipToastEl.className = 'tip-toast';
+    tipToastEl.setAttribute('role', 'status');
+    document.body.appendChild(tipToastEl);
+  }
+  tipToastEl.innerHTML =
+    '<span class="tip-ico" aria-hidden="true">' + tip.ico + '</span>' +
+    '<span class="tip-toast-text">' + escapeHtml(tip.text) + '</span>' +
+    '<button class="tip-toast-x" aria-label="Dismiss tip">&times;</button>';
+  tipToastEl.querySelector('.tip-toast-x').addEventListener('click', hideTipToast);
+  setTimeout(() => { if (tipToastEl) tipToastEl.classList.add('show'); }, 20);
+  if (tipToastTimer) clearTimeout(tipToastTimer);
+  tipToastTimer = setTimeout(hideTipToast, 6000);
+}
+function maybeNavTip(view) {
+  if (!prefBool(PREF.tipsNavigate, false)) return;
+  if (navTipShown.has(view)) return;
+  const pool = TIPS.filter(t => t.view === view);
+  if (!pool.length) return;
+  navTipShown.add(view);
+  showTipToast(pool[Math.floor(Math.random() * pool.length)]);
+}
+
+function initTips() {
+  renderTips();
+  syncTipsStartupChecks();
+  document.getElementById('tips-btn').addEventListener('click', openTips);
+  const homeTipsBtn = document.getElementById('home-tips-btn');
+  if (homeTipsBtn) {
+    homeTipsBtn.classList.add('hidden');
+    homeTipsBtn.tabIndex = -1;
+    homeTipsBtn.setAttribute('aria-hidden', 'true');
+    homeTipsBtn.addEventListener('click', openTips);
+  }
+  document.getElementById('tips-close').addEventListener('click', closeTips);
+  const modal = document.getElementById('tips-modal');
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeTips(); });
+  document.getElementById('startup-tip-close').addEventListener('click', closeStartupTip);
+  document.getElementById('see-all-tips-btn').addEventListener('click', () => { closeStartupTip(); openTips(); });
+  const sModal = document.getElementById('startup-tip-modal');
+  sModal.addEventListener('click', (e) => { if (e.target === sModal) closeStartupTip(); });
+  document.querySelectorAll('.tips-startup-check').forEach(c =>
+    c.addEventListener('change', () => setTipsStartup(c.checked)));
+  const nav = document.getElementById('pref-tips-navigate');
+  nav.checked = prefBool(PREF.tipsNavigate, false);
+  nav.addEventListener('change', () => {
+    localStorage.setItem(PREF.tipsNavigate, nav.checked ? '1' : '0');
+    if (!nav.checked) hideTipToast();
+  });
+}
+
+/* ============================================================
+   Help Center (FAQ) + Privacy Policy content
+============================================================ */
+const FAQ = [
+  ['Where is my data stored?',
+   'Your decks, cards, flags, profiles, and settings live in this browser\u2019s local storage. They are not uploaded by the app. Copies leave the browser only when you choose to export, share, or back them up, and information you submit through an external service such as GitHub is handled by that service.'],
+  ['How do profiles work?',
+   'Tap the colored avatar in the top-right to add a profile or switch between them. Each profile has its own decks, theme, accent color, font size, and preferences. Profiles are organizational spaces, not private accounts: there are no passwords or access controls, so anyone using the same browser can switch profiles and read their decks. Your existing cards automatically became the first profile, \u201cMe\u201d.'],
+  ['How do tips work?',
+   'Tap the lightbulb next to the \u2699 gear to see all the tips. When \u201cShow tips at startup\u201d is on, a single quick tip \u2014 a different one each time \u2014 pops up when you open the app; you can turn it off from that popup, the Home screen, or Settings. Turn on \u201cShow tips as you navigate\u201d in Settings for short, in-context reminders as you move between tabs.'],
+  ['Does it work offline?',
+   'Yes. Once installed to your home screen, the app runs fully offline. You only need a connection the first time you open it (and to fetch updates).'],
+  ['How do I import questions?',
+   'Go to the Import tab and tap \u201cImport file\u201d. You can load a Word .docx, a .csv/.txt list, or a deck .json exported from this app. Review the preview and duplicate warnings, then create a new deck, add the cards to an existing deck, or replace an existing deck. You can also type or paste cards as \u201cquestion | answer\u201d, one per line.'],
+  ['How do I back up or move all of my data?',
+   'On the Import tab, choose \u201cCreate Backup\u201d. The file includes every profile, deck, card, manual edit, flag, preference, deck order, and saved study position. Backup and deck-export files are readable, unencrypted JSON, so store and share them carefully. Creating and restoring backups work offline. You can keep the backup locally or in a cloud file service, then choose \u201cRestore Backup\u201d on another device. Restore can replace everything exactly or merge the backup as new profiles without overwriting current data.'],
+  ['Why can\u2019t I import some PDFs or Word files?',
+   'Scanned or image-only documents contain pictures of text, not real text, so nothing can be extracted without OCR. Convert them to a text-based .docx (open in Word) first, then import.'],
+  ['How do decks work?',
+   'Manage decks on the Import tab (create, rename, delete) and pick which deck to edit from the dropdown. On the Study tab, swipe a deck left and choose Edit to manage its individual cards. Search that card list by question or answer, and tap the three-line handle in the deck list to reveal controls that move the deck up or down.'],
+  ['Can I edit a card without leaving my study session?',
+   'Yes. While studying in Flashcards mode, tap “Edit card,” make the change, and save. The updated card appears immediately and your study position is preserved.'],
+  ['Can I continue a Flashcards session later?',
+   'Yes. Flashcards saves the current card and study order on this device. When you return to the Study tab, use the Resume panel to continue where you left off, or dismiss it and start a new session.'],
+  ['How does duplicate detection work when importing?',
+   'The import preview identifies exact question-and-answer duplicates, repeated questions, and repeated answers. Exact duplicates can be skipped automatically. Repeated questions and answers remain available because they may be intentional; they are warnings only.'],
+  ['How do I study more than one deck at once?',
+   'On the Study tab, check multiple decks in the list \u2014 they\u2019re studied together as one combined set.'],
+  ['What does \u201cFlag for review\u201d do?',
+   'While studying, tick \u201cFlag this card for review\u201d to mark tricky cards. Back on the Study picker, turn on \u201cOnly study flagged cards\u201d to drill just those.'],
+  ['What is Reverse mode?',
+   'Choose Flashcards in the Study picker, then turn on \u201cReverse\u201d to see the answer first and guess the question instead. Reverse applies only to Flashcards, not Matching Pairs or Multiple Choice.'],
+  ['What is Tap matching pair?',
+   'Matching Pairs is a game on the Study tab. Choose Matching pairs and select exactly one deck. Five questions appear in the left column and their shuffled answers appear in the right. Tap a question and its matching answer; correct pairs dim in green, while incorrect choices briefly change color and reset.'],
+  ['Why are some cards applicable for Matching Pairs and others are not?',
+   'Matching Pairs uses compact tiles. A card is applicable when both its question and answer fit comfortably inside those tiles at the current screen and font size. Repeated questions or answers may also prevent otherwise applicable cards from appearing together. Every card remains available in Flashcards mode.'],
+  ['What is Multiple Choice?',
+   'Multiple Choice is a game on the Study tab. Choose Multiple choice and select exactly one deck. Each question receives a correct answer and newly shuffled distractors from other cards in that deck. When an answer contains multiple semicolon-separated bullet items, the game can ask you to choose every correct answer. Results include a score, replay, and an option to review missed questions.'],
+  ['Why are some cards applicable for Multiple Choice and others are not?',
+   'A card is applicable when its question and answer choices fit comfortably on the screen and the deck contains enough unique, applicable answers to create distractors. For \u201cChoose every correct answer\u201d questions, each bullet item and the generated choices must fit. Every card remains available in Flashcards mode.'],
+  ['How does search work?',
+   'The search box on the Study tab scans every card\u2019s question and answer across all decks, and studies the matches as a custom set.'],
+  ['Can I add colors, shapes, or formatting to cards?',
+   'Yes. The individual card editor has Bold, Italic, Underline, and Bulleted list controls. Select text before choosing a text format. The list editor lets you add, delete, and reorder items, and the card editor displays them as real bullet lines without requiring a keyboard bullet character. The underlying safe syntax remains available: **bold**, *italic*, __underline__, color text such as {{c:red|your text}}, and shapes such as {{shape:circle|#4f46e5|120}}.'],
+  ['How do I share a deck with a contact?',
+   'On the Study tab, swipe a deck to the left (or hover it on a computer) to reveal Edit, Share, and Hide, then tap Share. On iPhone or Android the share sheet opens so you can send the deck as a file via AirDrop, Messages, email, and more. On a computer the deck downloads as a .json file that you can then attach and send.'],
+  ['How do I add a deck that was shared with me?',
+   'Save the .json file you received, then open the app, go to the Import tab, tap \u201cImport file\u201d, and choose that file. Review the preview, then create a new deck or add or replace an existing deck. On iPhone you can also open the file and choose to open it in Flashcards.'],
+  ['How do I install it on my iPhone?',
+   'Open the app in Safari, tap the Share button, then \u201cAdd to Home Screen\u201d.'],
+  ['How do I get updates?',
+   'When you are online and a new version has downloaded, a non-blocking update notice appears. Choose \u201cRestart and update\u201d when you are ready, or choose \u201cLater\u201d and keep using the current cached version. Your decks and settings are preserved.'],
+];
+
+function renderFaq() {
+  const wrap = document.getElementById('faq');
+  wrap.innerHTML = '';
+  for (const [q, a] of FAQ) {
+    const d = document.createElement('details');
+    d.className = 'faq-item';
+    const s = document.createElement('summary');
+    s.textContent = q;
+    const p = document.createElement('p');
+    p.textContent = a;
+    d.appendChild(s);
+    d.appendChild(p);
+    wrap.appendChild(d);
+  }
+}
+
+function renderPrivacy() {
+  const el = document.getElementById('privacy');
+  el.innerHTML = `
+    <p><strong>Your study content stays in this browser unless you choose to export, share, back it up, or submit it to an external service.</strong></p>
+    <ul>
+      <li><strong>No application analytics or advertising.</strong> Flashcard Flurry has no app accounts, tracking pixels, behavioral analytics, or advertising identifiers.</li>
+      <li><strong>Local app storage.</strong> Decks, cards, flags, profiles, preferences, and study positions are stored in this browser\u2019s local storage. Imported files are processed in the browser rather than uploaded to a Flashcard Flurry application server.</li>
+      <li><strong>Profiles are not privacy boundaries.</strong> Profiles organize decks but have no passwords or access controls. Anyone using the same browser can switch profiles and read their content.</li>
+      <li><strong>Readable export files.</strong> Deck exports and full backups are unencrypted JSON. A full backup can contain every profile and card. Store and share these files carefully.</li>
+      <li><strong>Saved copies remain separate.</strong> Deleting app data cannot delete backup or export files already saved, shared, attached to messages, or copied to cloud storage.</li>
+      <li><strong>Website delivery.</strong> GitHub Pages and network providers may process ordinary web-request information when they deliver the site and updates. The app\u2019s offline cache contains static app files, not your decks.</li>
+      <li><strong>External links.</strong> Feedback opens GitHub, where sign-in may be required and submitted issues may be public. Other links, including Analog Math Clock, open external websites governed by their own policies.</li>
+      <li><strong>Deletion.</strong> You can delete cards, decks, or profiles. Clearing Flashcard Flurry site data removes locally stored app content from that browser, but not copies stored elsewhere.</li>
+    </ul>
+    <p class="privacy-foot">The developer does not receive your decks or study activity through the app unless you deliberately include that information in feedback or another external submission.</p>
+  `;
+}
+
+
+/* ---------- Import/Create: editing ---------- */
+function updateCount() { document.getElementById('card-count').textContent = activeDeck().cards.length; }
+
+document.getElementById('save-btn').addEventListener('click', () => {
+  const parsed = parseInput(document.getElementById('bulk-input').value).filter(p => !isHeaderPair(p));
+  activeDeck().cards = parsed;
+  save();
+  renderDeckOptions();
+  updateCount();
+  setStatus(`Saved ${parsed.length} card${parsed.length === 1 ? '' : 's'}.`);
+});
+
+/* ---------- Auto-generate a deck from a topic (offline packs) ----------
+   generators.js (built-in deck data) is loaded lazily — see ensureGeneratorsLoaded —
+   since most study sessions never open this panel. initGenerator() runs once,
+   the first time it's actually available. */
+let generatorsInitialized = false;
+let generatorsLoadPromise = null;
+
+function ensureGeneratorsLoaded() {
+  if (window.TOPIC_PACKS) return Promise.resolve();
+  if (generatorsLoadPromise) return generatorsLoadPromise;
+  generatorsLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'generators.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load generators.js'));
+    document.body.appendChild(script);
+  });
+  return generatorsLoadPromise;
+}
+
+function initGenerator() {
+  if (generatorsInitialized) return;
+  generatorsInitialized = true;
+  const categoryEl = document.getElementById('gen-category');
+  const topicEl = document.getElementById('gen-topic');
+  const categories = Array.isArray(window.TOPIC_CATEGORIES) ? window.TOPIC_CATEGORIES : [];
+  const packs = Array.isArray(window.TOPIC_PACKS) ? window.TOPIC_PACKS : [];
+
+  if (categoryEl && categoryEl.options.length <= 1) {
+    for (const category of categories) {
+      const option = document.createElement('option');
+      option.value = category.id;
+      option.textContent = category.name;
+      categoryEl.appendChild(option);
+    }
+  }
+
+  function populateGeneratorDecks() {
+    if (!topicEl) return;
+    const selectedCategory = categoryEl ? categoryEl.value : '';
+    const previousValue = topicEl.value;
+    topicEl.textContent = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Choose a deck';
+    topicEl.appendChild(placeholder);
+
+    if (!selectedCategory && categories.length) {
+      for (const category of categories) {
+        const groupPacks = packs.filter(pack => pack.category === category.id);
+        if (!groupPacks.length) continue;
+        const group = document.createElement('optgroup');
+        group.label = category.name;
+        for (const pack of groupPacks) {
+          const option = document.createElement('option');
+          option.value = pack.id;
+          option.textContent = pack.name;
+          group.appendChild(option);
+        }
+        topicEl.appendChild(group);
+      }
+    } else {
+      for (const pack of packs.filter(pack => !selectedCategory || pack.category === selectedCategory)) {
+        const option = document.createElement('option');
+        option.value = pack.id;
+        option.textContent = pack.name;
+        topicEl.appendChild(option);
+      }
+    }
+
+    if (packs.some(pack => pack.id === previousValue && (!selectedCategory || pack.category === selectedCategory))) {
+      topicEl.value = previousValue;
+    }
+  }
+
+  if (topicEl && packs.length) populateGeneratorDecks();
+  if (categoryEl) categoryEl.addEventListener('change', populateGeneratorDecks);
+
+  const form = document.getElementById('gen-form');
+  if (!form) return;
+  const statusEl = document.getElementById('gen-status');
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const topic = topicEl.value.trim();
+    const count = parseInt(document.getElementById('gen-count').value, 10) || 0;
+    if (!topic) { setGenStatus('Choose a built-in deck first.', false); return; }
+
+    const pack = packs.find(candidate => candidate.id === topic) || window.matchTopic(topic);
+    if (!pack) {
+      setGenStatus('That built-in deck is unavailable. Choose another deck and try again.', false);
+      return;
+    }
+
+    const cards = pack.cardsFor(count);
+    const requested = count > 0 ? count : cards.length;
+    const name = uniqueName(pack.name);
+    const deck = { id: uid(), name, cards };
+    state.decks.push(deck);
+    state.activeId = deck.id;
+    save();
+    renderDeckOptions();
+    document.getElementById('bulk-input').value = cardsToText(cards);
+    updateCount();
+
+    const capped = requested > cards.length
+      ? ` (that pack only has ${cards.length})`
+      : '';
+    setGenStatus(`Created “${name}” with ${cards.length} card${cards.length === 1 ? '' : 's'}${capped}. Ready to study!`);
+    topicEl.value = '';
+  });
+
+  function setGenStatus(msg, ok = true) {
+    statusEl.style.color = ok ? '#4ade80' : 'var(--danger)';
+    statusEl.textContent = msg;
+    if (msg && ok) setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 6000);
+  }
+}
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  if (!confirm('Clear all cards in this deck?')) return;
+  activeDeck().cards = [];
+  save();
+  renderDeckOptions();
+  updateCount();
+  document.getElementById('bulk-input').value = '';
+  setStatus('Deck cleared.', false);
+});
+
+function deckFilename(d) { return `${d.name.replace(/[^\w.-]+/g, '_')}.json`; }
+function deckJSON(d) {
+  return JSON.stringify({
+    name: d.name,
+    cards: d.cards.map(card => ({ q: importValue(card.q), a: importValue(card.a) })),
+  }, null, 2);
+}
+
+function downloadDeck(d) {
+  const blob = new Blob([deckJSON(d)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = deckFilename(d);
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Share a deck as a .json file via the native share sheet (iOS/Android),
+// falling back to a download on platforms without Web Share file support (desktop).
+async function shareDeck(d) {
+  const file = new File([deckJSON(d)], deckFilename(d), { type: 'application/json' });
+  const shareData = { files: [file], title: d.name, text: `Flashcards deck: “${d.name}” (${d.cards.length} cards)` };
+  if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+    try {
+      await navigator.share(shareData);
+    } catch (err) {
+      if (err && err.name !== 'AbortError') downloadDeck(d); // real failure -> fallback
+    }
+    return;
+  }
+  // No Web Share (file) support: download the .json so the user can attach/send it.
+  downloadDeck(d);
+  toast(`“${d.name}” saved as a file — attach it in your email or messaging app to share.`);
+}
+
+document.getElementById('export-btn').addEventListener('click', () => downloadDeck(activeDeck()));
+
+/* ---------- Full-device backup and restore ---------- */
+const BACKUP_FORMAT = 'flashcard-flipper-backup';
+const BACKUP_VERSION = 1;
+const MAX_BACKUP_BYTES = 50 * 1024 * 1024;
+const backupRestoreSection = document.getElementById('backup-restore');
+const backupAllBtn = document.getElementById('backup-all-btn');
+const restoreFileInput = document.getElementById('restore-file-input');
+const backupStatus = document.getElementById('backup-status');
+const restorePreviewModal = document.getElementById('restore-preview-modal');
+const restorePreviewSummary = document.getElementById('restore-preview-summary');
+const restorePreviewDate = document.getElementById('restore-preview-date');
+const restorePreviewStatus = document.getElementById('restore-preview-status');
+let pendingRestore = null;
+
+if (backupRestoreSection) backupRestoreSection.classList.remove('hidden');
+
+function setBackupStatus(message, ok = true) {
+  if (!backupStatus) return;
+  backupStatus.style.color = ok ? 'var(--muted)' : 'var(--danger)';
+  backupStatus.textContent = message;
+}
+
+function profileStorageValues(profileId) {
+  const prefix = `flashcards.p.${profileId}.`;
+  const values = {};
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    const suffix = key.slice(prefix.length);
+    if (PROFILE_STORAGE_SUFFIX_SET.has(suffix)) values[suffix] = localStorage.getItem(key);
+  }
+  return values;
+}
+
+function validStoredId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+}
+
+function validProfileId(value) {
+  return validStoredId(value) &&
+    !['__proto__', 'prototype', 'constructor'].includes(value.toLowerCase());
+}
+
+function referenceExists(data, reference) {
+  if (!reference || typeof reference !== 'object') return false;
+  const deck = data.decks.find(item => item.id === reference.deckId);
+  return !!deck?.cards.some(card => card.id === reference.cardId);
+}
+
+function normalizeBackupProfileValues(values) {
+  const data = JSON.parse(values['data.v2']);
+  const activeDeck = data.decks.find(deck => deck.id === data.activeId) || data.decks[0];
+  const deckIds = new Set();
+  const cardIds = new Set();
+  for (const deck of data.decks) {
+    if (!validStoredId(deck.id) || deckIds.has(deck.id)) deck.id = uid('d');
+    deckIds.add(deck.id);
+    for (const card of deck.cards) {
+      if (!validStoredId(card.id) || cardIds.has(card.id)) card.id = uid('c');
+      cardIds.add(card.id);
+    }
+  }
+  if (activeDeck) data.activeId = activeDeck.id;
+  values['data.v2'] = JSON.stringify(data);
+
+  const sessionRaw = values['studySession.v1'];
+  if (!sessionRaw) return;
+  try {
+    const session = JSON.parse(sessionRaw);
+    if (!session || !Array.isArray(session.order)) {
+      delete values['studySession.v1'];
+      return;
+    }
+    session.order = session.order.filter(reference => referenceExists(data, reference));
+    if (!session.order.length) {
+      delete values['studySession.v1'];
+      return;
+    }
+    const currentIndex = referenceExists(data, session.current)
+      ? session.order.findIndex(reference => sameCardReference(reference, session.current))
+      : -1;
+    session.position = currentIndex >= 0
+      ? currentIndex
+      : Math.max(0, Math.min(Number.isInteger(session.position) ? session.position : 0,
+        session.order.length - 1));
+    session.current = session.order[session.position];
+    session.deckIds = Array.isArray(session.deckIds)
+      ? session.deckIds.filter(id => deckIds.has(id))
+      : [];
+    values['studySession.v1'] = JSON.stringify(session);
+  } catch {
+    delete values['studySession.v1'];
+  }
+}
+
+function backupCounts(registry, storage) {
+  let decks = 0;
+  let cards = 0;
+  for (const profile of registry.profiles) {
+    const raw = storage[profile.id]?.['data.v2'];
+    if (!raw) continue;
+    const data = JSON.parse(raw);
+    decks += data.decks.length;
+    cards += data.decks.reduce((total, deck) => total + deck.cards.length, 0);
+  }
+  return { profiles: registry.profiles.length, decks, cards };
+}
+
+function createFullBackup() {
+  save();
+  saveProfiles();
+  const registry = JSON.parse(JSON.stringify(profiles));
+  const storage = Object.create(null);
+  for (const profile of registry.profiles) {
+    storage[profile.id] = profileStorageValues(profile.id);
+    normalizeBackupProfileValues(storage[profile.id]);
+  }
+  return {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    createdAt: new Date().toISOString(),
+    appVersion: APP_VERSION,
+    profiles: registry,
+    storage,
+    counts: backupCounts(registry, storage),
+  };
+}
+
+function backupFilename() {
+  const date = new Date().toISOString().slice(0, 10);
+  return `Flashcard-Flurry-Backup-${date}.json`;
+}
+
+function downloadFullBackup() {
+  try {
+    const backup = createFullBackup();
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = backupFilename();
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setBackupStatus(
+      `Backed up ${backup.counts.profiles} profile${backup.counts.profiles === 1 ? '' : 's'}, ` +
+      `${backup.counts.decks} deck${backup.counts.decks === 1 ? '' : 's'}, and ` +
+      `${backup.counts.cards} card${backup.counts.cards === 1 ? '' : 's'}.`);
+  } catch (error) {
+    setBackupStatus(`Backup failed. ${error.message}`, false);
+  }
+}
+
+function assertBackup(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function validateProfileData(raw, profileName) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(`The deck data for “${profileName}” is not valid JSON.`);
+  }
+  assertBackup(data && typeof data === 'object' && Array.isArray(data.decks),
+    `The deck data for “${profileName}” is incomplete.`);
+  assertBackup(data.decks.length > 0, `The profile “${profileName}” does not contain a deck.`);
+  const deckIds = new Set();
+  const cardIds = new Set();
+  const sanitizedDecks = [];
+  for (const deck of data.decks) {
+    assertBackup(deck && typeof deck === 'object' && validStoredId(deck.id) &&
+      typeof deck.name === 'string' && Array.isArray(deck.cards),
+      `A deck in “${profileName}” is invalid.`);
+    assertBackup(!deckIds.has(deck.id), `The profile “${profileName}” contains duplicate deck identifiers.`);
+    deckIds.add(deck.id);
+    const sanitizedCards = [];
+    for (const card of deck.cards) {
+      assertBackup(card && typeof card === 'object' &&
+        validStoredId(card.id) && typeof card.q === 'string' && typeof card.a === 'string',
+      `A card in “${profileName}” is invalid.`);
+      assertBackup(!cardIds.has(card.id), `The profile “${profileName}” contains duplicate card identifiers.`);
+      cardIds.add(card.id);
+      const sanitizedCard = { id: card.id, q: card.q, a: card.a };
+      if (card.flagged === true) sanitizedCard.flagged = true;
+      sanitizedCards.push(sanitizedCard);
+    }
+    const sanitizedDeck = { id: deck.id, name: deck.name, cards: sanitizedCards };
+    if (deck.hidden === true) sanitizedDeck.hidden = true;
+    sanitizedDecks.push(sanitizedDeck);
+  }
+  assertBackup(validStoredId(data.activeId) && deckIds.has(data.activeId),
+    `The profile “${profileName}” has an invalid active deck.`);
+  return { decks: sanitizedDecks, activeId: data.activeId };
+}
+
+function validateStoredStudySession(raw, data, profileName) {
+  let session;
+  try {
+    session = JSON.parse(raw);
+  } catch {
+    throw new Error(`The saved study position for “${profileName}” is invalid.`);
+  }
+  assertBackup(session && Array.isArray(session.order) && session.order.length > 0,
+    `The saved study position for “${profileName}” is incomplete.`);
+  for (const reference of session.order) {
+    assertBackup(referenceExists(data, reference),
+      `The saved study position for “${profileName}” refers to a missing card.`);
+  }
+  if (session.current) {
+    assertBackup(referenceExists(data, session.current) &&
+      session.order.some(reference => sameCardReference(reference, session.current)),
+    `The current study card for “${profileName}” is invalid.`);
+  }
+  assertBackup(Number.isInteger(session.position) &&
+    session.position >= 0 && session.position < session.order.length,
+  `The study position for “${profileName}” is out of range.`);
+  const order = session.order.map(reference => ({
+    deckId: reference.deckId,
+    cardId: reference.cardId,
+  }));
+  const current = session.current
+    ? { deckId: session.current.deckId, cardId: session.current.cardId }
+    : order[session.position];
+  return {
+    version: 1,
+    label: typeof session.label === 'string' ? session.label.slice(0, 200) : '',
+    reverse: session.reverse === true,
+    deckIds: Array.isArray(session.deckIds)
+      ? session.deckIds.filter(id => data.decks.some(deck => deck.id === id))
+      : [],
+    order,
+    current,
+    position: session.position,
+    updatedAt: Number.isFinite(session.updatedAt) ? session.updatedAt : Date.now(),
+  };
+}
+
+function validateBackupSetting(suffix, value, profileName) {
+  const booleanSettings = new Set([
+    'pref.sound', 'pref.timer', 'pref.highContrast', 'pref.tipsStartup',
+    'pref.tipsNavigate', 'samplesSeeded',
+  ]);
+  if (booleanSettings.has(suffix)) {
+    assertBackup(value === '0' || value === '1',
+      `The setting “${suffix}” for “${profileName}” is invalid.`);
+  } else if (suffix === 'pref.font') {
+    assertBackup(['small', 'default', 'large', 'xl'].includes(value),
+      `The font setting for “${profileName}” is invalid.`);
+  } else if (suffix === 'theme') {
+    assertBackup(['system', 'light', 'dark'].includes(value),
+      `The theme setting for “${profileName}” is invalid.`);
+  } else if (suffix === 'accent') {
+    assertBackup(['indigo', 'blue', 'teal', 'green', 'purple', 'rose', 'orange', 'cranberry'].includes(value),
+      `The accent setting for “${profileName}” is invalid.`);
+  } else if (suffix === 'pref.tipIndex') {
+    assertBackup(/^\d{1,6}$/.test(value),
+      `The tip position for “${profileName}” is invalid.`);
+  }
+}
+
+function validateFullBackup(value) {
+  assertBackup(value && typeof value === 'object', 'This file is not a Flashcard Flurry backup.');
+  assertBackup(value.format === BACKUP_FORMAT, 'This is a deck export, not a full backup.');
+  assertBackup(value.version === BACKUP_VERSION, 'This backup version is not supported.');
+  const registry = value.profiles;
+  assertBackup(registry && Array.isArray(registry.profiles) && registry.profiles.length > 0,
+    'The backup does not contain any profiles.');
+  assertBackup(value.storage && typeof value.storage === 'object' && !Array.isArray(value.storage),
+    'The backup is missing profile data.');
+
+  const profileIds = new Set();
+  const sanitizedProfiles = [];
+  const sanitizedStorage = Object.create(null);
+  for (const profile of registry.profiles) {
+    assertBackup(profile && typeof profile === 'object', 'A profile in the backup is invalid.');
+    assertBackup(validProfileId(profile.id),
+      'A profile identifier in the backup is invalid.');
+    assertBackup(!profileIds.has(profile.id), 'The backup contains a duplicate profile identifier.');
+    assertBackup(typeof profile.name === 'string' && profile.name.trim(),
+      'A profile in the backup is missing its name.');
+    assertBackup(PROFILE_COLORS.includes(profile.color),
+      `The profile “${profile.name}” has an invalid color.`);
+    profileIds.add(profile.id);
+    sanitizedProfiles.push({
+      id: profile.id,
+      name: profile.name.trim().slice(0, 24),
+      color: profile.color,
+    });
+
+    assertBackup(Object.prototype.hasOwnProperty.call(value.storage, profile.id),
+      `The backup is missing data for “${profile.name}”.`);
+    const values = value.storage[profile.id];
+    assertBackup(values && typeof values === 'object' && !Array.isArray(values),
+      `The backup is missing data for “${profile.name}”.`);
+    const sanitizedValues = Object.create(null);
+    for (const [suffix, storedValue] of Object.entries(values)) {
+      assertBackup(PROFILE_STORAGE_SUFFIX_SET.has(suffix) && typeof storedValue === 'string',
+        `The backup contains an unsupported setting for “${profile.name}”.`);
+      validateBackupSetting(suffix, storedValue, profile.name);
+      sanitizedValues[suffix] = storedValue;
+    }
+    assertBackup(typeof values['data.v2'] === 'string',
+      `The backup is missing decks for “${profile.name}”.`);
+    const data = validateProfileData(values['data.v2'], profile.name);
+    sanitizedValues['data.v2'] = JSON.stringify(data);
+    if (typeof values['studySession.v1'] === 'string') {
+      sanitizedValues['studySession.v1'] = JSON.stringify(
+        validateStoredStudySession(values['studySession.v1'], data, profile.name)
+      );
+    }
+    sanitizedStorage[profile.id] = sanitizedValues;
+  }
+  assertBackup(profileIds.has(registry.activeId), 'The backup has an invalid active profile.');
+  for (const storageProfileId of Object.keys(value.storage)) {
+    assertBackup(profileIds.has(storageProfileId), 'The backup contains data for an unknown profile.');
+  }
+
+  const created = new Date(value.createdAt);
+  const sanitizedRegistry = { profiles: sanitizedProfiles, activeId: registry.activeId };
+  const counts = backupCounts(sanitizedRegistry, sanitizedStorage);
+  return {
+    profiles: sanitizedRegistry,
+    storage: sanitizedStorage,
+    createdAt: Number.isNaN(created.getTime()) ? null : created,
+    appVersion: typeof value.appVersion === 'string' ? value.appVersion : '',
+    counts,
+  };
+}
+
+function managedStorageSnapshot() {
+  const snapshot = {};
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key === PROFILES_KEY || key?.startsWith('flashcards.p.')) {
+      snapshot[key] = localStorage.getItem(key);
+    }
+  }
+  return snapshot;
+}
+
+function clearManagedStorage() {
+  const keys = [];
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key === PROFILES_KEY || key?.startsWith('flashcards.p.')) keys.push(key);
+  }
+  keys.forEach(key => localStorage.removeItem(key));
+}
+
+function applyManagedStorage(entries) {
+  for (const [key, value] of Object.entries(entries)) localStorage.setItem(key, value);
+}
+
+function storageTransaction(operation) {
+  const before = managedStorageSnapshot();
+  try {
+    operation();
+  } catch (error) {
+    clearManagedStorage();
+    applyManagedStorage(before);
+    throw error;
+  }
+}
+
+function backupStorageEntries(backup) {
+  const entries = { [PROFILES_KEY]: JSON.stringify(backup.profiles) };
+  for (const profile of backup.profiles.profiles) {
+    for (const [suffix, value] of Object.entries(backup.storage[profile.id])) {
+      entries[profileKey(profile.id, suffix)] = value;
+    }
+  }
+  return entries;
+}
+
+function uniqueRestoredProfileName(name, names) {
+  const base = name.trim().slice(0, 24) || 'Restored profile';
+  if (!names.has(base.toLowerCase())) return base;
+  let number = 1;
+  let candidate;
+  do {
+    const suffix = number === 1 ? ' (restored)' : ` (restored ${number})`;
+    candidate = base.slice(0, Math.max(1, 24 - suffix.length)) + suffix;
+    number++;
+  } while (names.has(candidate.toLowerCase()));
+  return candidate;
+}
+
+function replaceFromBackup(backup) {
+  storageTransaction(() => {
+    clearManagedStorage();
+    applyManagedStorage(backupStorageEntries(backup));
+  });
+}
+
+function mergeFromBackup(backup) {
+  storageTransaction(() => {
+    const merged = JSON.parse(JSON.stringify(profiles));
+    const names = new Set(merged.profiles.map(profile => profile.name.toLowerCase()));
+    for (const source of backup.profiles.profiles) {
+      let newId;
+      do { newId = uid('p'); } while (merged.profiles.some(profile => profile.id === newId));
+      const name = uniqueRestoredProfileName(source.name, names);
+      names.add(name.toLowerCase());
+      merged.profiles.push({ ...source, id: newId, name });
+      for (const [suffix, value] of Object.entries(backup.storage[source.id])) {
+        localStorage.setItem(profileKey(newId, suffix), value);
+      }
+    }
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(merged));
+  });
+}
+
+function closeRestorePreview() {
+  if (restorePreviewModal) restorePreviewModal.classList.add('hidden');
+  if (restorePreviewStatus) restorePreviewStatus.textContent = '';
+  pendingRestore = null;
+}
+
+function showRestorePreview(backup) {
+  pendingRestore = backup;
+  restorePreviewSummary.textContent =
+    `${backup.counts.profiles} profile${backup.counts.profiles === 1 ? '' : 's'}, ` +
+    `${backup.counts.decks} deck${backup.counts.decks === 1 ? '' : 's'}, and ` +
+    `${backup.counts.cards} card${backup.counts.cards === 1 ? '' : 's'}`;
+  restorePreviewDate.textContent = backup.createdAt
+    ? `Created ${backup.createdAt.toLocaleString()}${backup.appVersion ? ` with ${backup.appVersion}` : ''}.`
+    : (backup.appVersion ? `Created with ${backup.appVersion}.` : '');
+  restorePreviewStatus.textContent = '';
+  restorePreviewModal.classList.remove('hidden');
+}
+
+async function chooseRestoreFile(file) {
+  if (!file) return;
+  setBackupStatus('');
+  try {
+    if (file.size > MAX_BACKUP_BYTES) throw new Error('This backup is larger than 50 MB.');
+    const parsed = JSON.parse(await file.text());
+    showRestorePreview(validateFullBackup(parsed));
+  } catch (error) {
+    setBackupStatus(error instanceof SyntaxError
+      ? 'This file does not contain valid JSON.'
+      : error.message, false);
+  } finally {
+    restoreFileInput.value = '';
+  }
+}
+
+function confirmRestore() {
+  if (!pendingRestore) return;
+  const mode = document.querySelector('input[name="restore-mode"]:checked')?.value || 'replace';
+  if (mode === 'replace' &&
+      !confirm('Replace every current Flashcard Flurry profile, deck, and setting with this backup?')) {
+    return;
+  }
+  try {
+    if (mode === 'merge') mergeFromBackup(pendingRestore);
+    else replaceFromBackup(pendingRestore);
+    try {
+      localStorage.setItem('flashcards.restoreNotice',
+        mode === 'merge' ? 'Backup profiles merged successfully.' : 'Backup restored successfully.');
+    } catch {
+      // The restore itself is complete; a full storage quota should only suppress the toast.
+    }
+    location.reload();
+  } catch (error) {
+    restorePreviewStatus.textContent =
+      `Restore failed. Your existing data was kept. ${error.message}`;
+  }
+}
+
+if (backupAllBtn) backupAllBtn.addEventListener('click', downloadFullBackup);
+if (restoreFileInput) restoreFileInput.addEventListener('change', () =>
+  chooseRestoreFile(restoreFileInput.files?.[0]));
+document.getElementById('restore-preview-close')?.addEventListener('click', closeRestorePreview);
+document.getElementById('restore-preview-cancel')?.addEventListener('click', closeRestorePreview);
+document.getElementById('restore-preview-confirm')?.addEventListener('click', confirmRestore);
+if (restorePreviewModal) restorePreviewModal.addEventListener('click', event => {
+  if (event.target === restorePreviewModal) closeRestorePreview();
+});
+
+/* ---------- File import ---------- */
+const fileInput = document.getElementById('file-input');
+const importPreviewModal = document.getElementById('import-preview-modal');
+const importPreviewSummary = document.getElementById('import-preview-summary');
+const importPreviewWarnings = document.getElementById('import-preview-warnings');
+const importPreviewList = document.getElementById('import-preview-list');
+const importDeckName = document.getElementById('import-new-name');
+const importDestination = document.getElementById('import-destination');
+const importNewNameWrap = document.getElementById('import-new-name-row');
+const importTargetWrap = document.getElementById('import-existing-row');
+const importTargetDeck = document.getElementById('import-existing-deck');
+const importSkipDuplicates = document.getElementById('import-skip-duplicates');
+const importResultSummary = document.getElementById('import-result-summary');
+const importPreviewMore = document.getElementById('import-preview-more');
+let pendingImport = null;
+
+function importPairKey(card) {
+  return JSON.stringify([importValue(card.q), importValue(card.a)]);
+}
+
+function importValue(value) {
+  return String(value ?? '');
+}
+
+function analyzeImportedCards(cards) {
+  const pairCounts = new Map();
+  const questionCounts = new Map();
+  const answerCounts = new Map();
+  const duplicateIndexes = new Set();
+  cards.forEach((card, index) => {
+    const pairKey = importPairKey(card);
+    const qKey = importValue(card.q);
+    const aKey = importValue(card.a);
+    if ((pairCounts.get(pairKey) || 0) > 0) duplicateIndexes.add(index);
+    pairCounts.set(pairKey, (pairCounts.get(pairKey) || 0) + 1);
+    questionCounts.set(qKey, (questionCounts.get(qKey) || 0) + 1);
+    answerCounts.set(aKey, (answerCounts.get(aKey) || 0) + 1);
+  });
+  return {
+    duplicateIndexes,
+    exactDuplicates: [...pairCounts.values()].reduce((total, count) => total + Math.max(0, count - 1), 0),
+    repeatedQuestions: [...questionCounts.values()].filter(count => count > 1).length,
+    repeatedAnswers: [...answerCounts.values()].filter(count => count > 1).length
+  };
+}
+
+function closeImportPreview() {
+  if (importPreviewModal) importPreviewModal.classList.add('hidden');
+  pendingImport = null;
+  if (importPreviewSummary) importPreviewSummary.textContent = '';
+  if (importPreviewWarnings) importPreviewWarnings.replaceChildren();
+  if (importPreviewList) importPreviewList.replaceChildren();
+  if (importPreviewMore) importPreviewMore.textContent = '';
+  if (importResultSummary) importResultSummary.textContent = '';
+  if (importDeckName) importDeckName.value = '';
+  if (importTargetDeck) importTargetDeck.replaceChildren();
+}
+
+function updateImportDestination() {
+  if (!importDestination || !importTargetWrap) return;
+  const needsTarget = importDestination.value !== 'new';
+  importTargetWrap.classList.toggle('hidden', !needsTarget);
+  if (importNewNameWrap) importNewNameWrap.classList.toggle('hidden', needsTarget);
+  updateImportResultSummary();
+}
+
+function updateImportResultSummary() {
+  if (!pendingImport || !importResultSummary) return;
+  const destination = importDestination.value;
+  const target = state.decks.find(deck => deck.id === importTargetDeck.value);
+  const existing = destination === 'add' && target ? target.cards : [];
+  const resultingCards = deduplicateImportedCards(pendingImport.cards, existing);
+  const skipped = pendingImport.cards.length - resultingCards.length;
+  const action = destination === 'add' ? 'added' : destination === 'replace' ? 'used to replace the deck' : 'used to create the deck';
+  importResultSummary.textContent =
+    `${resultingCards.length} card${resultingCards.length === 1 ? '' : 's'} will be ${action}` +
+    (skipped ? `; ${skipped} exact duplicate${skipped === 1 ? '' : 's'} will be skipped.` : '.');
+}
+
+function showImportPreview(name, cards, method) {
+  const analysis = analyzeImportedCards(cards);
+  pendingImport = { name, cards, method, analysis };
+  importDeckName.value = name;
+  importDestination.value = 'new';
+  importSkipDuplicates.checked = true;
+  importPreviewSummary.textContent = `${cards.length} card${cards.length === 1 ? '' : 's'} parsed using ${method}.`;
+  importPreviewWarnings.innerHTML = '';
+
+  const warnings = [
+    [analysis.exactDuplicates, 'exact duplicate card', 'exact duplicate cards'],
+    [analysis.repeatedQuestions, 'repeated question', 'repeated questions'],
+    [analysis.repeatedAnswers, 'repeated answer', 'repeated answers']
+  ];
+  warnings.forEach(([count, singular, plural]) => {
+    if (!count) return;
+    const message = document.createElement('p');
+    message.className = 'import-warning';
+    message.textContent = `${count} ${count === 1 ? singular : plural} found.`;
+    importPreviewWarnings.appendChild(message);
+  });
+  if (!importPreviewWarnings.childElementCount) {
+    const message = document.createElement('p');
+    message.className = 'muted';
+    message.textContent = 'No duplicate pairs or repeated questions or answers found.';
+    importPreviewWarnings.appendChild(message);
+  }
+
+  importPreviewList.innerHTML = '';
+  cards.slice(0, 8).forEach((card, index) => {
+    const item = document.createElement('li');
+    item.className = `import-preview-item${analysis.duplicateIndexes.has(index) ? ' duplicate' : ''}`;
+    const question = document.createElement('strong');
+    question.textContent = accessibleRichText(card.q);
+    const answer = document.createElement('span');
+    answer.textContent = accessibleRichText(card.a);
+    item.appendChild(question);
+    item.appendChild(answer);
+    importPreviewList.appendChild(item);
+  });
+  if (cards.length > 8) {
+    const remainder = document.createElement('li');
+    remainder.className = 'muted';
+    remainder.textContent = `And ${cards.length - 8} more card${cards.length - 8 === 1 ? '' : 's'}...`;
+    importPreviewList.appendChild(remainder);
+  }
+
+  importTargetDeck.innerHTML = '';
+  state.decks.forEach(deck => {
+    const option = document.createElement('option');
+    option.value = deck.id;
+    option.textContent = `${deck.name} (${deck.cards.length})`;
+    importTargetDeck.appendChild(option);
+  });
+  importTargetDeck.value = state.activeId || state.decks[0]?.id || '';
+  updateImportDestination();
+  importPreviewModal.classList.remove('hidden');
+}
+
+function deduplicateImportedCards(cards, existingCards = []) {
+  if (!importSkipDuplicates?.checked) return cards.map(card => ({ ...card }));
+  const seen = new Set(existingCards.map(importPairKey));
+  return cards.filter(card => {
+    const key = importPairKey(card);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map(card => ({ ...card }));
+}
+
+function confirmImportPreview() {
+  if (!pendingImport) return;
+  const destination = importDestination.value;
+  let deck;
+  let importedCount;
+  if (destination === 'new') {
+    const name = importDeckName.value.trim();
+    if (!name) {
+      toast('Enter a deck name.');
+      importDeckName.focus();
+      return;
+    }
+    const cards = deduplicateImportedCards(pendingImport.cards);
+    importedCount = cards.length;
+    deck = { id: uid(), name, cards };
+    state.decks.push(deck);
+  } else {
+    deck = state.decks.find(item => item.id === importTargetDeck.value);
+    if (!deck) {
+      toast('Choose a destination deck.');
+      return;
+    }
+    if (destination === 'add') {
+      const cards = deduplicateImportedCards(pendingImport.cards, deck.cards);
+      importedCount = cards.length;
+      deck.cards.push(...cards);
+    } else {
+      const cards = deduplicateImportedCards(pendingImport.cards);
+      importedCount = cards.length;
+      deck.cards = cards;
+    }
+  }
+  state.activeId = deck.id;
+  save();
+  renderDeckOptions();
+  renderDeckList();
+  document.getElementById('bulk-input').value = cardsToText(deck.cards);
+  updateCount();
+  closeImportPreview();
+  setStatus(`Imported ${importedCount} card${importedCount === 1 ? '' : 's'} into “${deck.name}”.`);
+}
+
+if (importDestination) importDestination.addEventListener('change', updateImportDestination);
+if (importTargetDeck) importTargetDeck.addEventListener('change', updateImportResultSummary);
+if (importSkipDuplicates) importSkipDuplicates.addEventListener('change', updateImportResultSummary);
+const importPreviewClose = document.getElementById('import-preview-close');
+if (importPreviewClose) importPreviewClose.addEventListener('click', closeImportPreview);
+const importCancel = document.getElementById('import-preview-cancel');
+if (importCancel) importCancel.addEventListener('click', closeImportPreview);
+const importConfirm = document.getElementById('import-preview-confirm');
+if (importConfirm) importConfirm.addEventListener('click', confirmImportPreview);
+if (importPreviewModal) {
+  importPreviewModal.addEventListener('click', event => {
+    if (event.target === importPreviewModal) closeImportPreview();
+  });
+}
+
+if (fileInput) fileInput.addEventListener('change', async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  setStatus(`Reading ${file.name}…`);
+  try {
+    const { cards, method, suggestedName } = await importFile(file);
+    if (!cards || cards.length === 0) {
+      setStatus(`No cards found in ${file.name}. If it's a scanned/image file, the text can't be read.`, false);
+      fileInput.value = '';
+      return;
+    }
+    const proposedName = (suggestedName && suggestedName.trim()) || baseName(file.name) || 'Imported';
+    if (importPreviewModal) {
+      showImportPreview(uniqueName(proposedName), cards, method);
+      setStatus('');
+    } else {
+      const deckName = uniqueName(proposedName);
+      const d = { id: uid(), name: deckName, cards };
+      state.decks.push(d);
+      state.activeId = d.id;
+      save();
+      renderDeckOptions();
+      document.getElementById('bulk-input').value = cardsToText(cards);
+      updateCount();
+      setStatus(`Imported ${cards.length} cards into “${deckName}” (${method}).`);
+    }
+  } catch (err) {
+    setStatus(err.message || 'Could not read that file.', false);
+  }
+  fileInput.value = '';
+});
+
+/* ---------- Install hint (iOS Safari) ---------- */
+function maybeShowInstallBanner() {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  const dismissed = localStorage.getItem('flashcards.installDismissed') === '1';
+  if (isIOS && !standalone && !dismissed) document.getElementById('install-banner').classList.remove('hidden');
+}
+document.getElementById('install-dismiss').addEventListener('click', () => {
+  document.getElementById('install-banner').classList.add('hidden');
+  localStorage.setItem('flashcards.installDismissed', '1');
+});
+
+/* ---------- Theme (mode + accent) ---------- */
+function getTheme() { return localStorage.getItem(K('theme')) || 'system'; }
+function getAccent() { return localStorage.getItem(K('accent')) || 'indigo'; }
+
+function applyTheme() {
+  const mode = getTheme();
+  const accent = getAccent();
+  const highContrast = prefBool(PREF.highContrast, false);
+  document.documentElement.setAttribute('data-theme', mode);
+  document.documentElement.setAttribute('data-accent', accent);
+  document.documentElement.setAttribute('data-contrast', highContrast ? 'high' : 'normal');
+  document.querySelectorAll('#theme-mode .seg').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('#accent-swatches .swatch').forEach(b =>
+    b.classList.toggle('active', b.dataset.accent === accent));
+  const highContrastToggle = document.getElementById('pref-high-contrast');
+  if (highContrastToggle) highContrastToggle.checked = highContrast;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    const dark = mode === 'dark' ||
+      (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    meta.setAttribute('content', highContrast ? (dark ? '#000000' : '#ffffff') : (dark ? '#0f172a' : '#f8fafc'));
+  }
+}
+
+document.querySelectorAll('#theme-mode .seg').forEach(b =>
+  b.addEventListener('click', () => { localStorage.setItem(K('theme'), b.dataset.mode); applyTheme(); }));
+document.querySelectorAll('#accent-swatches .swatch').forEach(b =>
+  b.addEventListener('click', () => { localStorage.setItem(K('accent'), b.dataset.accent); applyTheme(); }));
+
+// React to OS light/dark changes while on "System".
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (getTheme() === 'system') applyTheme();
+});
+
+/* ---------- Profiles UI ---------- */
+function profileInitial(p) { return ((p.name || '').trim()[0] || '?').toUpperCase(); }
+
+function renderProfileButton() {
+  const p = activeProfile();
+  const btn = document.getElementById('profile-btn');
+  if (!btn || !p) return;
+  btn.style.background = p.color;
+  btn.textContent = profileInitial(p);
+  btn.setAttribute('title', 'Profile: ' + p.name);
+  btn.setAttribute('aria-label', 'Profile: ' + p.name + '. Tap to switch profiles.');
+}
+
+function renderProfileList() {
+  const ul = document.getElementById('profile-list');
+  if (!ul) return;
+  const canDelete = profiles.profiles.length > 1;
+  ul.innerHTML = '';
+  for (const p of profiles.profiles) {
+    const li = document.createElement('li');
+    li.className = 'profile-row' + (p.id === profiles.activeId ? ' active' : '');
+    li.innerHTML =
+      '<button class="profile-pick" data-id="' + p.id + '">' +
+        '<span class="avatar" style="background:' + p.color + '">' + escapeHtml(profileInitial(p)) + '</span>' +
+        '<span class="pname">' + escapeHtml(p.name) + '</span>' +
+        (p.id === profiles.activeId ? '<span class="active-check" aria-label="Active">\u2713</span>' : '') +
+      '</button>' +
+      '<button class="row-act color" data-id="' + p.id + '" style="color:' + p.color + '" title="Change color" aria-label="Change color">\u25CF</button>' +
+      '<button class="row-act rename" data-id="' + p.id + '" title="Rename" aria-label="Rename">\u270E</button>' +
+      (canDelete ? '<button class="row-act delete" data-id="' + p.id + '" title="Delete" aria-label="Delete">\u2715</button>' : '');
+    ul.appendChild(li);
+  }
+}
+
+function openProfiles() { renderProfileList(); document.getElementById('profiles-modal').classList.remove('hidden'); }
+function closeProfiles() { document.getElementById('profiles-modal').classList.add('hidden'); }
+
+function switchProfile(pid) {
+  if (pid === profiles.activeId) { closeProfiles(); return; }
+  profiles.activeId = pid;
+  saveProfiles();
+  location.reload(); // clean reload so the pre-paint theme + decks load for the new profile
+}
+
+function addProfile() {
+  const name = prompt('Name for the new profile:');
+  if (!name || !name.trim()) return;
+  const pid = uid();
+  profiles.profiles.push({ id: pid, name: name.trim().slice(0, 24), color: nextProfileColor() });
+  profiles.activeId = pid;
+  saveProfiles();
+  location.reload();
+}
+
+function renameProfile(pid) {
+  const p = profiles.profiles.find(x => x.id === pid);
+  if (!p) return;
+  const name = prompt('Rename profile:', p.name);
+  if (!name || !name.trim()) return;
+  p.name = name.trim().slice(0, 24);
+  saveProfiles();
+  renderProfileList();
+  renderProfileButton();
+}
+
+function cycleProfileColor(pid) {
+  const p = profiles.profiles.find(x => x.id === pid);
+  if (!p) return;
+  const i = PROFILE_COLORS.indexOf(p.color);
+  p.color = PROFILE_COLORS[(i + 1) % PROFILE_COLORS.length];
+  saveProfiles();
+  renderProfileList();
+  if (pid === profiles.activeId) renderProfileButton();
+}
+
+function deleteProfile(pid) {
+  if (profiles.profiles.length <= 1) return;
+  const p = profiles.profiles.find(x => x.id === pid);
+  if (!p) return;
+  if (!confirm('Delete profile \u201c' + p.name + '\u201d and all of its decks on this device? This cannot be undone.')) return;
+  profiles.profiles = profiles.profiles.filter(x => x.id !== pid);
+  deleteProfileData(pid);
+  if (profiles.activeId === pid) {
+    profiles.activeId = profiles.profiles[0].id;
+    saveProfiles();
+    location.reload();
+    return;
+  }
+  saveProfiles();
+  renderProfileList();
+}
+
+function initProfiles() {
+  renderProfileButton();
+  document.getElementById('profile-btn').addEventListener('click', openProfiles);
+  document.getElementById('profiles-close').addEventListener('click', closeProfiles);
+  document.getElementById('add-profile-btn').addEventListener('click', addProfile);
+  const modal = document.getElementById('profiles-modal');
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeProfiles(); });
+  document.getElementById('profile-list').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const id = b.dataset.id;
+    if (b.classList.contains('profile-pick')) switchProfile(id);
+    else if (b.classList.contains('color')) cycleProfileColor(id);
+    else if (b.classList.contains('rename')) renameProfile(id);
+    else if (b.classList.contains('delete')) deleteProfile(id);
+  });
+}
+
+/* ---------- Boot ---------- */
+loadProfiles();
+load();
+ensureSamples();
+const _removedHeaders = cleanupHeaderCards();
+save();
+applyTheme();
+initPrefs();
+initProfiles();
+initTips();
+renderFaq();
+renderPrivacy();
+const _ver = document.querySelector('.settings-version');
+if (_ver) _ver.textContent = 'Flashcard Flurry ' + APP_VERSION + ' \u00b7 offline PWA';
+renderDeckOptions();
+updateCount();
+showView('home');
+const restoreNotice = localStorage.getItem('flashcards.restoreNotice');
+if (restoreNotice) {
+  localStorage.removeItem('flashcards.restoreNotice');
+  setTimeout(() => toast(restoreNotice), 300);
+}
+if (prefBool(PREF.tipsStartup, true)) openStartupTip();
+maybeShowInstallBanner();
+if (_removedHeaders) {
+  setTimeout(() => toast(`Removed ${_removedHeaders} column-header row${_removedHeaders > 1 ? 's' : ''} from your decks.`), 900);
+}
+
+if ('serviceWorker' in navigator) {
+  let waitingWorker = null;
+  let updateRequested = false;
+  let reloading = false;
+
+  function hideUpdateReady() {
+    const banner = document.getElementById('update-ready-banner');
+    if (banner) banner.remove();
+  }
+
+  function showUpdateReady(worker) {
+    if (!worker || !navigator.serviceWorker.controller) return;
+    waitingWorker = worker;
+    if (document.getElementById('update-ready-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'update-ready-banner';
+    banner.className = 'update-ready-banner';
+    banner.setAttribute('role', 'status');
+    banner.innerHTML =
+      '<span class="update-ready-message"><strong>A new version is ready.</strong> Restart to apply it. Your decks stay saved.</span>' +
+      '<button type="button" class="btn primary" id="update-ready-restart">Restart and update</button>' +
+      '<button type="button" class="update-ready-later" id="update-ready-later">Later</button>';
+    document.body.appendChild(banner);
+    document.getElementById('update-ready-restart').addEventListener('click', () => {
+      if (!waitingWorker) return;
+      updateRequested = true;
+      waitingWorker.postMessage('activate-v67');
+    });
+    document.getElementById('update-ready-later').addEventListener('click', hideUpdateReady);
+  }
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!updateRequested || reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').then(reg => {
+      // Check for a new version now and whenever the app regains focus.
+      reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+      function announce(worker) {
+        if (worker && worker.state === 'installed') showUpdateReady(worker);
+      }
+      if (reg.waiting) showUpdateReady(reg.waiting);
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (nw) nw.addEventListener('statechange', () => announce(nw));
+      });
+    }).catch(() => {});
+  });
+}

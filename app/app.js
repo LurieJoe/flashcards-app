@@ -65,6 +65,16 @@ let currentStudyLabel = '';
 /* ---------- Persistence ---------- */
 function uid(prefix = 'd') { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
+// Delays calling fn until `wait` ms after the last call — used so full-list re-renders
+// (e.g. card search) don't fire on every keystroke on large decks.
+function debounce(fn, wait = 150) {
+  let t = null;
+  return function debounced(...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
 /* ---------- Profiles (local, no login) ----------
    Each profile namespaces its own storage under flashcards.p.<id>.<suffix>, so a
    parent can hand the iPad to different kids and each keeps their own decks, theme,
@@ -579,6 +589,13 @@ function showView(name) {
     document.getElementById('bulk-input').value = cardsToText(activeDeck().cards);
     updateCount();
     setManualEditorOpen(false);
+    ensureGeneratorsLoaded().then(initGenerator).catch(() => {
+      const genStatusEl = document.getElementById('gen-status');
+      if (genStatusEl) {
+        genStatusEl.style.color = 'var(--danger)';
+        genStatusEl.textContent = 'Could not load built-in decks. Check your connection and try again.';
+      }
+    });
   }
   maybeNavTip(name);
 }
@@ -1409,7 +1426,7 @@ function deleteCardEditor() {
 
 const cardManagerBack = document.getElementById('card-manager-back');
 if (cardManagerBack) cardManagerBack.addEventListener('click', openDeckPicker);
-if (cardManagerSearch) cardManagerSearch.addEventListener('input', renderCardManager);
+if (cardManagerSearch) cardManagerSearch.addEventListener('input', debounce(renderCardManager, 150));
 if (cardManagerSearchClear) cardManagerSearchClear.addEventListener('click', () => {
   cardManagerSearch.value = '';
   renderCardManager();
@@ -3285,8 +3302,29 @@ document.getElementById('save-btn').addEventListener('click', () => {
   setStatus(`Saved ${parsed.length} card${parsed.length === 1 ? '' : 's'}.`);
 });
 
-/* ---------- Auto-generate a deck from a topic (offline packs) ---------- */
-(function initGenerator() {
+/* ---------- Auto-generate a deck from a topic (offline packs) ----------
+   generators.js (built-in deck data) is loaded lazily — see ensureGeneratorsLoaded —
+   since most study sessions never open this panel. initGenerator() runs once,
+   the first time it's actually available. */
+let generatorsInitialized = false;
+let generatorsLoadPromise = null;
+
+function ensureGeneratorsLoaded() {
+  if (window.TOPIC_PACKS) return Promise.resolve();
+  if (generatorsLoadPromise) return generatorsLoadPromise;
+  generatorsLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'generators.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load generators.js'));
+    document.body.appendChild(script);
+  });
+  return generatorsLoadPromise;
+}
+
+function initGenerator() {
+  if (generatorsInitialized) return;
+  generatorsInitialized = true;
   const categoryEl = document.getElementById('gen-category');
   const topicEl = document.getElementById('gen-topic');
   const categories = Array.isArray(window.TOPIC_CATEGORIES) ? window.TOPIC_CATEGORIES : [];
@@ -3381,7 +3419,7 @@ document.getElementById('save-btn').addEventListener('click', () => {
     statusEl.textContent = msg;
     if (msg && ok) setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 6000);
   }
-})();
+}
 
 document.getElementById('clear-btn').addEventListener('click', () => {
   if (!confirm('Clear all cards in this deck?')) return;

@@ -46,7 +46,7 @@ self.addEventListener('activate', event => {
 
 // Allow the page to trigger immediate activation of a waiting worker.
 self.addEventListener('message', event => {
-  if (['activate-v47', 'activate-v48', 'activate-v49', 'activate-v50', 'activate-v51', 'activate-v52', 'activate-v53', 'activate-v54', 'activate-v55', 'activate-v56', 'activate-v57', 'activate-v58', 'activate-v59', 'activate-v60', 'activate-v61', 'activate-v62', 'activate-v63', 'activate-v64', 'activate-v65', 'activate-v66', 'activate-v67'].includes(event.data)) self.skipWaiting();
+  if (typeof event.data === 'string' && event.data.startsWith('activate-v')) self.skipWaiting();
 });
 
 function isAppCode(url) {
